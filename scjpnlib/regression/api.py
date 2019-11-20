@@ -21,6 +21,78 @@ from sklearn.model_selection import cross_val_score
 
 plot_edge = 4
 
+def histograms(df):
+    feats = df.columns
+    
+    s_html = "<h3>Distributions:</h3><ul>"
+    s_html += "<li><b>feature set</b>: {}</li>".format(feats)
+    s_html += "</ul>"
+    display(HTML(s_html))
+    
+    n_feats = len(feats)
+    
+    r_w = 4*plot_edge if n_feats > plot_edge else (n_feats*4 if n_feats > 1 else plot_edge)
+    r_h = plot_edge if n_feats > 4 else (plot_edge if n_feats > 1 else plot_edge)
+    
+    c_n = 4 if n_feats > 4 else n_feats
+    r_n = n_feats/c_n
+    r_n = int(r_n) + (1 if n_feats > 4 and r_n % int(r_n) != 0 else 0)        
+
+    fig = plt.figure(figsize=(r_w, r_h*r_n))
+
+    axes = fig.subplots(r_n, c_n)
+    unused = list(range(0, len(axes.flatten()))) if n_feats > 1 else [0]
+
+    included_feats = []
+    for index, feat in enumerate(feats):
+        ax = fig.add_subplot(r_n, c_n, index+1)
+        sns.distplot(df[feat], ax=ax)
+        plt.xlabel(feat)
+        included_feats.append(feat)
+        unused.remove(index)
+
+    flattened_axes = axes.flatten() if n_feats > 1 else [axes]
+    for u in unused:
+        fig.delaxes(flattened_axes[u])
+
+    fig.tight_layout()
+    plt.show();
+
+    return included_feats
+
+def histograms_comparison(feature_series, xlabels, titles):    
+    s_html = "<h3>Distributions:</h3><ul>"
+    s_html += "</ul>"
+    display(HTML(s_html))
+    
+    n_feats = len(feature_series)
+    
+    r_w = 4*plot_edge if n_feats > plot_edge else (n_feats*4 if n_feats > 1 else plot_edge)
+    r_h = plot_edge if n_feats > 4 else (plot_edge if n_feats > 1 else plot_edge)
+    
+    c_n = 4 if n_feats > 4 else n_feats
+    r_n = n_feats/c_n
+    r_n = int(r_n) + (1 if n_feats > 4 and r_n % int(r_n) != 0 else 0)        
+
+    fig = plt.figure(figsize=(r_w, r_h*r_n))
+
+    axes = fig.subplots(r_n, c_n)
+    unused = list(range(0, len(axes.flatten()))) if n_feats > 1 else [0]
+
+    for index, fs in enumerate(feature_series):
+        ax = fig.add_subplot(r_n, c_n, index+1)
+        sns.distplot(fs, ax=ax)
+        plt.xlabel(xlabels[index])
+        plt.title(titles[index])
+        unused.remove(index)
+
+    flattened_axes = axes.flatten() if n_feats > 1 else [axes]
+    for u in unused:
+        fig.delaxes(flattened_axes[u])
+
+    #fig.tight_layout()
+    plt.show();
+
 def plot_corr(df, filter=None):
     corr = df[filter].corr() if (filter is not None and len(filter) > 0) else df.corr()
     # Generate a mask for the upper triangle
@@ -296,6 +368,9 @@ def stepwise_selection(
     Always set threshold_in < threshold_out to avoid infinite looping.
     See https://en.wikipedia.org/wiki/Stepwise_regression for the details
     """
+
+    starting_features = list(X.columns)
+
     included = list(initial_list)
     included_pvals = []
     while True:
@@ -313,7 +388,7 @@ def stepwise_selection(
             included_pvals.append(best_pval)
             changed=True
             if verbose:
-                print("Add  {:30} with p-value {:.6}".format(best_feature, best_pval))
+                print("stepwise_selection: Add  {:30} with p-value {:.6}".format(best_feature, best_pval))
 
         # backward step
         model = sm.OLS(y, sm.add_constant(pd.DataFrame(X[included]))).fit()
@@ -327,148 +402,55 @@ def stepwise_selection(
             del included_pvals[included.index(worst_feature)]
             included.remove(worst_feature)
             if verbose:
-                print("Drop {:30} with p-value {:.6}".format(worst_feature, worst_pval))
+                print("stepwise_selection: Drop {:30} with p-value {:.6}".format(worst_feature, worst_pval))
         if not changed:
             break
+
+    dropped = list(set(starting_features) - set(included))
             
-    #included_aux = sorted(d_included.items(), key=lambda feat_pval: feat_pval[1])
-    #print(included_aux)
+    print("\nstepwise_selection: starting features:\n{}".format(starting_features))
+    print("\nstepwise_selection: selected features:\n{}".format(included))
+    print("\nstepwise_selection: dropped statistically insignificant features:\n{}".format(dropped))
         
     return (included, included_pvals)
 
-def lin_reg_model_from_auto_selected_features(df, target, tr = None):
-    print("Computing most statstically significant features...")
-    
-    data_fin_df = df.copy()
-    
-    y = data_fin_df[target]
-    X = data_fin_df.drop([target], axis=1)
-    
-    sel_features, their_pvals = stepwise_selection(X, y, verbose=True)  
-    
-    if tr is None:
-        X_train, X_test, y_train, y_test, train_mse, test_mse, _ = find_best_train_test_split(X[sel_features], y)
-    else:
-        X_train, X_test, y_train, y_test, train_mse, test_mse, _ = skl_lin_reg_validation(X[sel_features], y, tr, True)
-        
-    #pca = PCA()
-    #X_train_PCA = pca.fit_transform(X_train)
-    #X_test_PCA = pca.transform(X_test)
-    #explained_variance = pca.explained_variance_ratio_
-    #print(explained_variance)
+def forward_selected(data, response):
+    """Linear model designed by forward selection.
 
-    f = target + '~' + "+".join(sel_features)
-    data_fin_df = pd.concat([y_train, X_train], axis=1, join='inner').reset_index()
-    model = ols(formula=f, data=data_fin_df)
+    Parameters:
+    -----------
+    data : pandas DataFrame with all possible predictors and response
 
-    return (sel_features, their_pvals, X_train, X_test, y_train, y_test, train_mse, test_mse, model)
+    response: string, name of response column in data
 
-def scatter_plots(df, target=None):
-    df_minus_target = df.drop(target, axis=1) if target is not None else df
-    
-    s_html = "<h3>Scatter Plots:</h3><ul>"
-    if target is not None:
-        s_html += "<li><b>target</b>: {}</li>".format(target)
-    s_html += "<li><b>feature set</b>: {}</li>".format(df_minus_target.columns)
-    s_html += "</ul>"
-    display(HTML(s_html))
-    
-    r_w = 20
-    r_h = 4
-
-    c_n = 4 if len(df_minus_target.columns) >= 4 else len(df_minus_target.columns)
-    r_n = len(df_minus_target.columns)/c_n
-    r_n = int(r_n) + (1 if r_n % int(r_n) != 0 else 0)
-
-    fig = plt.figure(figsize=(r_w, r_h*r_n))
-
-    axes = fig.subplots(r_n, c_n)
-
-    for index, feat in enumerate(df_minus_target):
-        ax = fig.add_subplot(r_n, c_n, index+1)
-        plt.scatter(df[feat], df[target], alpha=0.2)
-        plt.xlabel(feat)
-        plt.ylabel(target)
-
-    flattened_axes = axes.flatten()
-    for unused in range(len(flattened_axes)-1, index, -1):
-        fig.delaxes(flattened_axes[unused])
-
-    fig.tight_layout()
-    plt.show();
-
-def split_categorical(df, p_cat, target=None):
-    df_minus_target = df.drop(target, axis=1) if target is not None else df
-    
-    s_html = "<h2>Split Categorical:</h2><ul>"
-    s_html += "<li><b>p-cat threshold</b>: {}</li>".format(p_cat)
-    s_html += "<li><b>feature set</b>: {}</li>".format(df_minus_target.columns)
-    s_html += "</ul>"
-    display(HTML(s_html))
-    
-    if target is not None:
-        scatter_plots(df, target)
-    
-    cat_classification_df = classify_as_categorical(df_minus_target, p_cat, False)
-    display(HTML("<b>Categorical Features ($p\\_cat \\ge {}$):</b><br><br>".format(p_cat)))
-    print_df(cat_classification_df)
-    
-    categorical_features = list(cat_classification_df['name'])
-    continuous_features = list(df_minus_target.columns)
-
-    s_html = "The following features are <i>apparently</i> <b>categorical</b> (based on $p\\_cat \\ge {}$):<br><ul>".format(p_cat)
-    for cat_feat in categorical_features:
-        continuous_features.remove(cat_feat)
-        s_html += "<li><b>{}</b></li>".format(cat_feat)
-    s_html += "</ul>"
-    display(HTML(s_html))
-    
-    s_html = "<br>Based on the above, the following features are <i>apparently</i> <b>continuous</b>:<br><ul>"
-    for cont_feat in continuous_features:
-        s_html += "<li><b>{}</b></li>".format(cont_feat)
-    s_html += "</ul>"
-    display(HTML(s_html))
-        
-    return (cat_classification_df, categorical_features, continuous_features)
-
-def histograms(df):
-    feats = df.columns
-    
-    s_html = "<h3>Distributions:</h3><ul>"
-    s_html += "<li><b>feature set</b>: {}</li>".format(feats)
-    s_html += "</ul>"
-    display(HTML(s_html))
-    
-    n_feats = len(feats)
-    
-    r_w = 4*plot_edge if n_feats > plot_edge else (n_feats*4 if n_feats > 1 else plot_edge)
-    r_h = plot_edge if n_feats > 4 else (plot_edge if n_feats > 1 else plot_edge)
-    
-    c_n = 4 if n_feats > 4 else n_feats
-    r_n = n_feats/c_n
-    r_n = int(r_n) + (1 if n_feats > 4 and r_n % int(r_n) != 0 else 0)        
-
-    fig = plt.figure(figsize=(r_w, r_h*r_n))
-
-    axes = fig.subplots(r_n, c_n)
-    unused = list(range(0, len(axes.flatten()))) if n_feats > 1 else [0]
-
-    included_feats = []
-    for index, feat in enumerate(feats):
-        ax = fig.add_subplot(r_n, c_n, index+1)
-        sns.distplot(df[feat], ax=ax)
-        plt.xlabel(feat)
-        included_feats.append(feat)
-        unused.remove(index)
-
-    flattened_axes = axes.flatten() if n_feats > 1 else [axes]
-    for u in unused:
-        fig.delaxes(flattened_axes[u])
-
-    fig.tight_layout()
-    plt.show();
-
-    return included_feats
+    Returns:
+    --------
+    model: an "optimal" fitted statsmodels linear model
+           with an intercept
+           selected by forward selection
+           evaluated by adjusted R-squared
+    """
+    remaining = set(data.columns)
+    remaining.remove(response)
+    selected = []
+    current_score, best_new_score = 0.0, 0.0
+    while remaining and current_score == best_new_score:
+        scores_with_candidates = []
+        for candidate in remaining:
+            formula = "{} ~ {} + 1".format(response,
+                                           ' + '.join(selected + [candidate]))
+            score = smf.ols(formula, data).fit().rsquared_adj
+            scores_with_candidates.append((score, candidate))
+        scores_with_candidates.sort()
+        best_new_score, best_candidate = scores_with_candidates.pop()
+        if current_score < best_new_score:
+            remaining.remove(best_candidate)
+            selected.append(best_candidate)
+            current_score = best_new_score
+    formula = "{} ~ {} + 1".format(response,
+                                   ' + '.join(selected))
+    model = smf.ols(formula, data).fit()
+    return model
 
 def cv_build_feature_combinations(X, upper_bound=2**18, boundary_test=False):
     feat_combos = dict()
@@ -553,6 +535,115 @@ def cv_selection(X, y, tr, folds, scoring_method, fn_better_score):
     
     return (best_feat_combo, best_score, to_drop)
 
+def lin_reg_model_from_auto_selected_features(
+    df
+    , target
+    , fn_feature_selection=stepwise_selection
+    , tr = None
+    , title="Linear Regression Model"):
+
+    s_html = "<h1>{}</h1><ul>".format(title)
+    s_html += "<li><b>target</b>: {}</li>".format(target)
+    s_html += "<li><b>starting feature set</b>: {}</li>".format(df.drop(target, axis=1).columns)
+    s_html += "<li><b>training/test split ratio</b>: ${}/{}$</li>".format(1-tr, tr)
+    s_html += "</ul>"
+    display(HTML(s_html))
+
+    print("Feature selection method: {}".format(fn_feature_selection))
+    
+    data_fin_df = df.copy()
+    
+    y = data_fin_df[target]
+    X = data_fin_df.drop([target], axis=1)
+    
+    sel_features, their_pvals = fn_feature_selection(X, y)
+    f = target + '~' + "+".join(sel_features)
+    print("\nformula: {}".format(f))
+    
+    if tr is None:
+        X_train, X_test, y_train, y_test, train_mse, test_mse, _ = find_best_train_test_split(X[sel_features], y)
+    else:
+        X_train, X_test, y_train, y_test, train_mse, test_mse, _ = skl_lin_reg_validation(X[sel_features], y, tr, True)
+        
+    #pca = PCA()
+    #X_train_PCA = pca.fit_transform(X_train)
+    #X_test_PCA = pca.transform(X_test)
+    #explained_variance = pca.explained_variance_ratio_
+    #print(explained_variance)
+
+    data_fin_df = pd.concat([y_train, X_train], axis=1, join='inner').reset_index()
+    model = ols(formula=f, data=data_fin_df)
+
+    return (sel_features, their_pvals, X_train, X_test, y_train, y_test, train_mse, test_mse, model)
+
+def scatter_plots(df, target=None):
+    df_minus_target = df.drop(target, axis=1) if target is not None else df
+    
+    s_html = "<h3>Scatter Plots:</h3><ul>"
+    if target is not None:
+        s_html += "<li><b>target</b>: {}</li>".format(target)
+    s_html += "<li><b>feature set</b>: {}</li>".format(df_minus_target.columns)
+    s_html += "</ul>"
+    display(HTML(s_html))
+    
+    r_w = 20
+    r_h = 4
+
+    c_n = 4 if len(df_minus_target.columns) >= 4 else len(df_minus_target.columns)
+    r_n = len(df_minus_target.columns)/c_n
+    r_n = int(r_n) + (1 if r_n % int(r_n) != 0 else 0)
+
+    fig = plt.figure(figsize=(r_w, r_h*r_n))
+
+    axes = fig.subplots(r_n, c_n)
+
+    for index, feat in enumerate(df_minus_target):
+        ax = fig.add_subplot(r_n, c_n, index+1)
+        plt.scatter(df[feat], df[target], alpha=0.2)
+        plt.xlabel(feat)
+        plt.ylabel(target)
+
+    flattened_axes = axes.flatten()
+    for unused in range(len(flattened_axes)-1, index, -1):
+        fig.delaxes(flattened_axes[unused])
+
+    fig.tight_layout()
+    plt.show();
+
+def split_categorical(df, p_cat, target=None):
+    df_minus_target = df.drop(target, axis=1) if target is not None else df
+    
+    s_html = "<h2>Split Categorical:</h2><ul>"
+    s_html += "<li><b>p-cat threshold</b>: {}</li>".format(p_cat)
+    s_html += "<li><b>feature set</b>: {}</li>".format(df_minus_target.columns)
+    s_html += "</ul>"
+    display(HTML(s_html))
+    
+    if target is not None:
+        scatter_plots(df, target)
+    
+    cat_classification_df = classify_as_categorical(df_minus_target, p_cat, False)
+    display(HTML("<b>Categorical Features ($p\\_cat \\ge {}$):</b><br><br>".format(p_cat)))
+    print_df(cat_classification_df)
+    
+    categorical_features = list(cat_classification_df['name'])
+    continuous_features = list(df_minus_target.columns)
+
+    s_html = "The following features are <i>apparently</i> <b>categorical</b> (based on $p\\_cat \\ge {}$):<br><ul>".format(p_cat)
+    for cat_feat in categorical_features:
+        continuous_features.remove(cat_feat)
+        s_html += "<li><b>{}</b></li>".format(cat_feat)
+    s_html += "</ul>"
+    display(HTML(s_html))
+    
+    s_html = "<br>Based on the above, the following features are <i>apparently</i> <b>continuous</b>:<br><ul>"
+    for cont_feat in continuous_features:
+        s_html += "<li><b>{}</b></li>".format(cont_feat)
+    s_html += "</ul>"
+    display(HTML(s_html))
+        
+    return (cat_classification_df, categorical_features, continuous_features)
+
 def run_full_regression_experiment(
     transformed_and_scaled_df
     , target
@@ -564,7 +655,7 @@ def run_full_regression_experiment(
     , p_cat
     , fn_init_bin_bases
     , cont_and_cat_features_tuple=None
-    , exp_title=None):  
+    , title=None):  
 
     # handle restricting to filter features: continuous + categorical
     if cont_and_cat_features_tuple is not None:
@@ -584,13 +675,6 @@ def run_full_regression_experiment(
 
     if to_drop is not None and len(to_drop) > 0:
         transformed_and_scaled_minus_todrop_df = transformed_and_scaled_minus_todrop_df.drop(to_drop, axis=1)  
-
-    s_html = "<h1>" + (exp_title if exp_title is not None else "Full Linear Regression Experiment") + ":</h1><ul>"
-    s_html += "<li><b>target</b>: {}</li>".format(target)
-    s_html += "<li><b>feature set</b>: {}</li>".format(transformed_and_scaled_minus_todrop_df.drop(target, axis=1).columns)
-    s_html += "<li><b>training/test split ratio</b>: ${}/{}$</li>".format(1-tr, tr)
-    s_html += "</ul>"
-    display(HTML(s_html))
     
     # if it is None then we need to partition...
     if cont_and_cat_features_tuple is None:      
@@ -622,7 +706,7 @@ def run_full_regression_experiment(
         , train_mse
         , test_mse
         , model
-    ) = lin_reg_model_from_auto_selected_features(transformed_and_scaled_and_categorized_df, target, tr=tr)
+    ) = lin_reg_model_from_auto_selected_features(transformed_and_scaled_and_categorized_df, target, tr=tr, title=title)
 
     (model_fit_results, good_vif_features, bad_vif_features) = model_fit_summary(
         transformed_and_scaled_and_categorized_df
