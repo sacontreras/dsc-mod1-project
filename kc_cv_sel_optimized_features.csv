@@ -1,2 +1,2 @@
 cv_sel_features,rmse,delta_rmse,cond_no,to_drop
-"['bathrooms', 'sqft_lot', 'floors', 'waterfront', 'view', 'lat', 'sqft_living15', 'sqft_lot15']",0.0678144717847852,0.0002927442808492664,95.24045861411359,"['sqft_above', 'sqft_basement', 'sqft_living', 'grade', 'yr_renovated', 'bedrooms', 'long', 'yr_built']"
+"['sqft_lot', 'waterfront', 'view', 'grade', 'yr_built', 'lat', 'sqft_living15', 'sqft_lot15']",0.06006129830778598,0.0003679709353943475,247.5450564585526,"['long', 'bathrooms', 'sqft_living', 'bedrooms', 'floors', 'sqft_above', 'yr_renovated', 'sqft_basement']"
