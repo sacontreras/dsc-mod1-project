@@ -9,22 +9,22 @@ from folium import plugins
 # this function allows displaying dataframes using print() with pandas "pretty" HTML formatting
 #   so that multiple "pretty" displays of dataframes can be rendered "inline"
 #   default behavior (without specifying a range) is identical to that of df.head()
-def print_df(df, r = None):
+def print_df(df, n = None):
     pd.set_option('display.max_columns', None)
     pd.set_option('display.max_rows', None)
     pd.set_option('display.max_colwidth', -1)
 
-    if r is None:
-        r = range(0, len(df))
-    display(HTML(df.iloc[r].to_html()))
-    display(HTML("<br>{} rows x {} columns<br><br>".format(len(r), len(df.columns))))
+    if n is None:
+        n = len(df)
+    display(HTML(df.head(n).to_html()))
+    display(HTML("<br>{} rows x {} columns<br><br>".format(n, len(df.columns))))
 
     pd.reset_option('display.max_columns')
     pd.reset_option('display.max_rows')
     pd.reset_option('display.max_colwidth')
 
 def print_df_head(df):
-    print_df(df, range(0,5))
+    print_df(df, n=5)
 
 # note that we can qualitatively retrieve this information via df.info() but this function
 #   provides us with an object we can manipulate programatically, whereas df.info() just 
@@ -37,6 +37,9 @@ def cols_with_nulls(df):
         if n_null > 0:
             cols_with_null_vals.append([col, idx, df[col].dtype, n_null])
     return pd.DataFrame(cols_with_null_vals, columns=summary_cols)
+
+def get_remaining_features(df, target, features):
+    return df.drop([target] + features, axis=1).columns
 
 def categorical_probability(df, col, exclude_null_vals=True):
     unique_vals = df[col].unique()
@@ -52,7 +55,11 @@ def categorical_probability(df, col, exclude_null_vals=True):
     unique_vals = sorted(unique_vals)
     return (n_unique, round(1 - (n_unique/(len(df[col]))), 4), unique_vals)
 
-def classify_as_categorical(df, p_cat_th, exclude_null_vals=True):
+def classify_as_categorical(
+    df
+    , p_cat_th
+    , exclude_null_vals=True):
+    
     cols_classified = []
     summary_cols = ['name', 'index', 'dtype', 'n_unique', 'p_cat', 'unique_vals']
     for idx, col in enumerate(df.columns):
@@ -63,9 +70,14 @@ def classify_as_categorical(df, p_cat_th, exclude_null_vals=True):
 
 # numeric_replacement_rules should be of the form:
 #    {<name_of_col>: [(outlier_val_1, 'median'|'mean'|<numeric_replacement_value>), ((outlier_val_2, 'median'|'mean'|<numeric_replacement_value>)), ... , (outlier_val_n, 'median'|'mean'|<numeric_replacement_value>)]}}
-def clean_offending_values(df, numeric_replacement_rules = None, string_replacement_rules = None, friendly_name_of_df = ""):
+def clean_offending_values(
+    df
+    , numeric_replacement_rules = None
+    , string_replacement_rules = None
+    , friendly_name_of_df = ""):
+
     friendly_name = friendly_name_of_df if len(friendly_name_of_df) > 0 else "df"
-    print("*** CLEANING VALUES of {}: BEGIN ***\n".format(friendly_name))
+    print("*** CLEANING VALUES of {}: BEGIN ***".format(friendly_name))
     
     has_numeric_rules = numeric_replacement_rules is not None
     has_string_rules = string_replacement_rules is not None
@@ -92,6 +104,7 @@ def clean_offending_values(df, numeric_replacement_rules = None, string_replacem
                     replace_with_min = data_type is str and rule.lower() == 'min'
                     replace_with_max = data_type is str and rule.lower() == 'max'
                     replace_with_mean = data_type is str and rule.lower() == 'mean'
+                    replace_with_callable = callable(rule)
                     if replace_with_numeric_literal:
                         df.loc[offending_indexes, col] = rule
                         print("Replaced {} offending instances in column '{}' with literal value {}\n".format(len(offending_indexes), col, rule))
@@ -108,7 +121,10 @@ def clean_offending_values(df, numeric_replacement_rules = None, string_replacem
                         df.loc[offending_indexes, col] = imputed 
                         s_desc = "the {} of column '{}'".format(rule, col)  
                         print("{} is {} and was imputed from {}".format(s_desc.capitalize(), imputed, s_imputed_from))
-                        print("Replaced {} offending instances in column '{}' with {} ({})\n".format(len(offending_indexes), col, s_desc, imputed))
+                        print("Replaced {} offending instances in column '{}' with {} ({})".format(len(offending_indexes), col, s_desc, imputed))
+                    elif replace_with_callable:
+                        df.loc[offending_indexes, col] = df.loc[offending_indexes, col].map(rule)
+                        print("Replaced {} offending instances in column '{}' with results from callable {}".format(len(offending_indexes), col, rule))
                     else:
                         print("Unsupported or unknown rule: {}".format(rule))                   
                 else:
@@ -127,7 +143,7 @@ def clean_offending_values(df, numeric_replacement_rules = None, string_replacem
                     offending_indexes = df_rows_with_outliers.index
                     print("Rows with offending values occur at {}.".format(offending_indexes))
                     df.loc[offending_indexes, col] = rule
-                    print("Replaced {} offending instances in column '{}' with literal value '{}'\n".format(len(offending_indexes), col, rule))                 
+                    print("Replaced {} offending instances in column '{}' with literal value '{}'".format(len(offending_indexes), col, rule))                 
                 else:
                     print("There are no rows that contain values of '{}' in {}!".format(col, offending_vals))
 

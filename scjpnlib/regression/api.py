@@ -6,6 +6,7 @@ import statsmodels.api as sm
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import KFold
 from statsmodels.stats.outliers_influence import variance_inflation_factor as vif
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -70,7 +71,8 @@ def histograms_comparison(feature_series, xlabels, titles):
     r_w = 4*plot_edge if n_feats > plot_edge else (n_feats*4 if n_feats > 1 else plot_edge)
     r_h = plot_edge if n_feats > 4 else (plot_edge if n_feats > 1 else plot_edge)
     
-    c_n = 4 if n_feats > 4 else n_feats
+    #c_n = 4 if n_feats > 4 else n_feats
+    c_n = 2
     r_n = n_feats/c_n
     r_n = int(r_n) + (1 if n_feats > 4 and r_n % int(r_n) != 0 else 0)        
 
@@ -187,105 +189,23 @@ def feature_regression_summary(
         
         display(
             HTML(
-                "Variance Inflation Factor (<i>VIF</i>) for <b>{}</b>: <b>{}</b> ({})<br><br>".format(
+                "Variance Inflation Factor (<i>VIF</i>) for <b>{}</b>: <b>{}</b> {}".format(
                     feat
                     , round(v, 2)
-                    , "<b>GOOD</b>, low colinearity $\\iff VIF \\le 10$" if not colinear else "BAD, <b>HIGH COLINEARITY</b> $\\iff VIF>10$<br><br>"
+                    , "$\\le 10 \\iff$ low colinearity" if not colinear else "$> 10 \\iff$ <b>HIGH COLINEARITY</b>"
+                )
+            )
+        ) 
+        display(
+            HTML(
+                "<b><i>p-value</i></b> (<i>VIF</i>) for <b>{}</b>: <b>{}</b><br><br>".format(
+                    feat
+                    , model_fit_results.pvalues[feat_idx+1]
                 )
             )
         )
     
     return v
-
-def model_fit_summary(
-    df
-    , sel_features
-    , their_pvals
-    , target
-    , model
-    , tr
-    , train_mse
-    , test_mse
-    , mv_r_sq_th
-    , mv_mse_delta_th
-    , mv_bad_vif_ratio_th
-    , display_regress_diagnostics=False):
-
-    # get results of OLS fit from previously computed model
-    model_fit_results = model.fit()
-    
-    delta_mse = abs(test_mse - train_mse)
-    valid_r_sq = model_fit_results.rsquared >= mv_r_sq_th
-
-    # for each feature, compute VIF and optionally display QQ plot
-    display(HTML("<h3>Regression Diagnostics</h3>"))
-    good_vifs = []
-    bad_vifs = []
-    for idx, feat in enumerate(sel_features):        
-        v = feature_regression_summary(df[sel_features], idx, model_fit_results, display_regress_diagnostics)
-        if v <= 10:
-            good_vifs.append((feat, round(v, 2), their_pvals[sel_features.index(feat)]))
-        else:
-            bad_vifs.append((feat, round(v, 2), their_pvals[sel_features.index(feat)]))    
-    # order good VIF features by p-value
-    good_vifs = sorted(good_vifs, key=lambda good_vif: good_vif[2])    
-    # order bad VIF features by VIF
-    bad_vifs = sorted(bad_vifs, key=lambda bad_vif: bad_vif[1], reverse=True)
-    good_vif_ratio = len(good_vifs)/len(sel_features)
-    bad_vif_ratio = 1 - good_vif_ratio
-    
-    # VIF/colinearity summary
-    display(HTML("<h3>VIF Summary</h3>"))
-    s_html = "<br><b>'GOOD' FEATURES</b> (<i>with LOW COLINEARITY, VIF <= 10</i>), ordered by favorable (increasing) p-val:<ol>"
-    for good_vif in good_vifs:
-        s_html += "<li><b>{:30}</b>: p-val $= {}$</li>".format(good_vif[0], good_vif[2])
-    s_html += "</ol>"
-    display(HTML(s_html))    
-    s_html = "<br><b>'BAD' FEATURES</b> (<i>with HIGH COLINEARITY, VIF > 10</i>), ordered by unfavorable (decreasing) VIF:<ol>"
-    for bad_vif in bad_vifs:
-        s_html += "<li><b>{:30}</b>: VIF $= {}$</li>".format(bad_vif[0], bad_vif[1])
-    s_html += "</ol>"
-    display(HTML(s_html)) 
-    good_vif_ratio = len(good_vifs)/len(sel_features)
-    display(HTML("<br><b>{}% of features are 'GOOD'.<br>".format(round(good_vif_ratio*100,2))))
-    plot_corr(df)
-    
-    # always displays QQ plot of residuals and density plots of target 
-    fig = plt.figure(figsize=(10, 5))
-    axes = fig.subplots(1, 2)
-    sm.graphics.qqplot(model_fit_results.resid, dist=stats.norm, line='45', fit=True, ax=axes[0])
-    sns.distplot(df[target], ax=axes[1])   
-    fig.tight_layout()
-    plt.show();
-    
-    # display the OLS summary
-    display(HTML(model_fit_results.summary().as_html()))
-    
-    s_html = "<h3>Model Validation Summary</h3><ol>"
-    s_html += "<li><b>$R^2={} \ge $</b> acceptable threshold ({}): <b>{}</b></li>".format(
-        model_fit_results.rsquared
-        , mv_r_sq_th
-        , "PASS" if valid_r_sq else "FAIL"
-    )    
-    valid_delta_mse = delta_mse <= mv_mse_delta_th
-    s_html += "<li><b>$\Delta MSE=|{}-{}|={} \le $</b> acceptable threshold ({}): <b>{}</b></li>".format(
-        test_mse
-        , train_mse
-        , delta_mse
-        , mv_mse_delta_th
-        , "PASS" if valid_delta_mse else "FAIL"
-    )    
-    valid_bad_vif_ratio = mv_bad_vif_ratio_th > bad_vif_ratio
-    s_html += "<li><b>bad VIF ratio = ${}$%</b> < acceptable threshold ({}%): <b>{}</b></li>".format(
-        round(bad_vif_ratio*100,2)
-        , round(mv_bad_vif_ratio_th*100,2)
-        , "PASS" if valid_bad_vif_ratio else "FAIL"
-    )
-    s_html += "</ol>"
-    s_html += "<b>Model Validation Assessment: {}</b>".format("PASS" if (valid_r_sq and valid_delta_mse and valid_bad_vif_ratio) else "FAIL")
-    display(HTML(s_html))
-    
-    return (model_fit_results, good_vifs, bad_vifs)
 
 def skl_lin_reg_validation(X, y, tr, verbose=False):
     linreg = LinearRegression()
@@ -350,8 +270,7 @@ def stepwise_selection(
     X
     , y
     , initial_list=[]
-    , 
-    threshold_in=0.01
+    , threshold_in=0.01
     , threshold_out = 0.05
     , verbose=True):
 
@@ -411,51 +330,13 @@ def stepwise_selection(
     print("\nstepwise_selection: starting features:\n{}".format(starting_features))
     print("\nstepwise_selection: selected features:\n{}".format(included))
     print("\nstepwise_selection: dropped statistically insignificant features:\n{}".format(dropped))
-        
-    return (included, included_pvals)
 
-def forward_selected(data, response):
-    """Linear model designed by forward selection.
+    return (included, None, dropped)
 
-    Parameters:
-    -----------
-    data : pandas DataFrame with all possible predictors and response
-
-    response: string, name of response column in data
-
-    Returns:
-    --------
-    model: an "optimal" fitted statsmodels linear model
-           with an intercept
-           selected by forward selection
-           evaluated by adjusted R-squared
-    """
-    remaining = set(data.columns)
-    remaining.remove(response)
-    selected = []
-    current_score, best_new_score = 0.0, 0.0
-    while remaining and current_score == best_new_score:
-        scores_with_candidates = []
-        for candidate in remaining:
-            formula = "{} ~ {} + 1".format(response,
-                                           ' + '.join(selected + [candidate]))
-            score = smf.ols(formula, data).fit().rsquared_adj
-            scores_with_candidates.append((score, candidate))
-        scores_with_candidates.sort()
-        best_new_score, best_candidate = scores_with_candidates.pop()
-        if current_score < best_new_score:
-            remaining.remove(best_candidate)
-            selected.append(best_candidate)
-            current_score = best_new_score
-    formula = "{} ~ {} + 1".format(response,
-                                   ' + '.join(selected))
-    model = smf.ols(formula, data).fit()
-    return model
-
-def cv_build_feature_combinations(X, upper_bound=2**18, boundary_test=False):
+def cv_build_feature_combinations(X, reverse=False, upper_bound=2**18, boundary_test=False):
     feat_combos = dict()
     
-    r = range(1, len(X.columns)+1)
+    r = range(len(X.columns), 0, -1) if reverse else range(1, len(X.columns)+1)  # build up from potentially worst case
         
     n = max(r)
     
@@ -489,8 +370,218 @@ def cv_build_feature_combinations(X, upper_bound=2**18, boundary_test=False):
     
     return (feat_combos, len_total_combos)
 
-def cv_selection(X, y, tr, folds, scoring_method, fn_better_score):
-    cv_feat_combo_map, len_total_combos = cv_build_feature_combinations(X)
+mse = 'mse'
+mse_train = mse + '_train'
+mse_test = mse + '_test'
+delta_mse = 'delta_' + mse
+mse_train_and_mse_test = mse_train + '__and__' + mse_test
+mse_and_delta_mse = mse + '__and__' + delta_mse
+rmse = 'rmse'
+rmse_train = rmse + '_train'
+rmse_test = rmse + '_test'
+delta_rmse = 'delta_' + rmse
+rmse_train_and_rmse_test = rmse_train + '__and__' + rmse_test
+rmse_and_delta_rmse = rmse + '__and__' + delta_rmse
+adjusted_rsquared = 'adjusted_rsquared'
+condition_no = 'condition_no'
+condition_no_and_adjusted_rsquared = condition_no + '__and__' + adjusted_rsquared
+condition_no_and_rmse_and_delta_rmse = condition_no + '__and__' + rmse_and_delta_rmse
+cv_scoring_methods = [
+    mse_train_and_mse_test
+    , mse_and_delta_mse
+    , rmse_train_and_rmse_test
+    , rmse_and_delta_rmse
+    , adjusted_rsquared
+    , condition_no
+    , condition_no_and_adjusted_rsquared
+    , condition_no_and_rmse_and_delta_rmse
+]
+
+def cv_score(
+    X
+    , y
+    , feat_combo
+    , folds=5
+    , scoring_method=rmse_train_and_rmse_test):
+
+    if scoring_method not in cv_scoring_methods:
+        raise ValueError("Unknown scoring_method: '{}'".format(scoring_method))
+
+    if scoring_method == mse_train_and_mse_test:
+        scores_df = pd.DataFrame(columns=[mse_train, mse_test])
+
+    elif scoring_method == mse_and_delta_mse:
+        scores_df = pd.DataFrame(columns=[mse, delta_mse])
+
+    elif scoring_method == rmse_train_and_rmse_test:
+        scores_df = pd.DataFrame(columns=[rmse_train, rmse_test])
+
+    elif scoring_method == rmse_and_delta_rmse:
+        scores_df = pd.DataFrame(columns=[rmse, delta_rmse])
+
+    elif scoring_method == adjusted_rsquared:
+        scores_df = pd.DataFrame(columns=[adjusted_rsquared])
+
+    elif scoring_method == condition_no:
+        scores_df = pd.DataFrame(columns=[condition_no])
+
+    elif scoring_method == condition_no_and_adjusted_rsquared:
+        scores_df = pd.DataFrame(columns=[condition_no, adjusted_rsquared])
+
+    elif scoring_method == condition_no_and_rmse_and_delta_rmse:
+        scores_df = pd.DataFrame(columns=[condition_no, rmse, delta_rmse])
+
+    f = y.columns[0] + '~' + "+".join(feat_combo)
+    scores = []
+
+    if folds > 1:
+        train_test_indices = KFold(n_splits=folds).split(X)
+    else:
+        X_train, X_test, _, _ = train_test_split(X, y, test_size=0.30, random_state=42)
+        train_test_indices = [(X_train.index, X_test.index)]
+
+    for train_index, test_index in train_test_indices:
+        X_train, X_test = X.iloc[train_index][feat_combo], X.iloc[test_index][feat_combo]
+        y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+        data_fin_df = pd.concat([y_train, X_train], axis=1, join='inner').reset_index()
+        model_fit_results = ols(formula=f, data=data_fin_df).fit()
+
+        if scoring_method == mse_train_and_mse_test \
+            or scoring_method == mse_and_delta_mse \
+            or scoring_method == rmse_train_and_rmse_test \
+            or scoring_method == rmse_and_delta_rmse \
+            or scoring_method == condition_no_and_rmse_and_delta_rmse:
+
+            y_hat_train = model_fit_results.predict(X_train)
+            y_hat_test = model_fit_results.predict(X_test)
+            _mse_train = mean_squared_error(y_train, y_hat_train)
+            _mse_test = mean_squared_error(y_test, y_hat_test)
+
+            if scoring_method == mse_train_and_mse_test:
+                data = [
+                    {
+                        mse_train: _mse_train
+                        , mse_test: _mse_test
+                    }
+                ]
+
+            elif scoring_method == rmse_train_and_rmse_test:
+                data = [
+                    {
+                        rmse_train: np.sqrt(_mse_train)
+                        , rmse_test: np.sqrt(_mse_test)
+                    }
+                ]
+
+            elif scoring_method == mse_and_delta_mse:
+                data = [
+                    {
+                        mse: _mse_train
+                        , delta_mse: abs(_mse_test - _mse_train)
+                    }
+                ]
+
+            elif scoring_method == rmse_and_delta_rmse:
+                _rmse_train = np.sqrt(_mse_train)
+                data = [
+                    {
+                        rmse: _rmse_train
+                        , delta_rmse: abs(np.sqrt(_mse_test) - _rmse_train)
+                    }
+                ]
+
+            elif scoring_method == condition_no_and_rmse_and_delta_rmse:
+                _rmse_train = np.sqrt(_mse_train)
+                data = [
+                    {
+                        condition_no: model_fit_results.condition_number
+                        , rmse: _rmse_train
+                        , delta_rmse: abs(np.sqrt(_mse_test) - _rmse_train)
+                    }
+                ]
+                scores_df = scores_df.append(data, ignore_index=True, sort=False)
+
+            scores_df = scores_df.append(data, ignore_index=True, sort=False)
+
+        elif scoring_method == adjusted_rsquared:
+            data = [{adjusted_rsquared: model_fit_results.rsquared_adj}]
+            scores_df = scores_df.append(data, ignore_index=True, sort=False)
+
+        elif scoring_method == condition_no:
+            data = [{condition_no: model_fit_results.condition_number}]
+            scores_df = scores_df.append(data, ignore_index=True, sort=False)
+
+        elif scoring_method == condition_no_and_adjusted_rsquared:
+            data = [
+                {
+                    condition_no: model_fit_results.condition_number
+                    , adjusted_rsquared: model_fit_results.rsquared_adj
+                }
+            ]
+            scores_df = scores_df.append(data, ignore_index=True, sort=False)
+
+    # now compute the mean score over all k-folds
+    if scoring_method == mse_train_and_mse_test:
+        mean_mse_train = scores_df[mse_train].mean()
+        mean_mse_test = scores_df[mse_test].mean()
+        mean_cv_score = (mean_mse_train, mean_mse_test)
+
+    elif scoring_method == rmse_train_and_rmse_test:
+        mean_rmse_train = scores_df[rmse_train].mean()
+        mean_rmse_test = scores_df[rmse_test].mean()
+        mean_cv_score = (mean_rmse_train, mean_rmse_test)
+
+    elif scoring_method == mse_and_delta_mse:
+        mean_mse = scores_df[mse].mean()
+        mean_delta_mse = scores_df[delta_mse].mean()
+        mean_cv_score = (mean_mse, mean_delta_mse)
+
+    elif scoring_method == rmse_and_delta_rmse:
+        mean_rmse = scores_df[rmse].mean()
+        mean_delta_rmse = scores_df[delta_rmse].mean()
+        mean_cv_score = (mean_rmse, mean_delta_rmse)
+
+    elif scoring_method == adjusted_rsquared:
+        mean_adj_rsq = scores_df[adjusted_rsquared].mean()
+        mean_cv_score = mean_adj_rsq
+
+    elif scoring_method == condition_no:
+        mean_cond_no = scores_df[condition_no].mean()
+        mean_cv_score = mean_cond_no
+    
+    elif scoring_method == condition_no_and_adjusted_rsquared:
+        mean_cond_no = scores_df[condition_no].mean()
+        mean_adj_rsq = scores_df[adjusted_rsquared].mean()
+        mean_cv_score = (mean_cond_no, mean_adj_rsq)
+
+    elif scoring_method == condition_no_and_rmse_and_delta_rmse:
+        mean_cond_no = scores_df[condition_no].mean()
+        mean_rmse = scores_df[rmse].mean()
+        mean_delta_rmse = scores_df[delta_rmse].mean()
+        mean_cv_score = (mean_cond_no, mean_rmse, mean_delta_rmse)
+
+    return (X_train, X_test, y_train, y_test, mean_cv_score)
+
+def cv_selection(
+    X
+    , y
+    , folds=5
+    , scoring_method=condition_no_and_rmse_and_delta_rmse
+    , reverse=False
+    , smargs=None):
+
+    if scoring_method not in cv_scoring_methods:
+        raise ValueError("Unknown scoring_method: '{}'".format(scoring_method))
+
+    if scoring_method == condition_no_and_adjusted_rsquared or scoring_method == condition_no_and_rmse_and_delta_rmse:
+        target_cond_no = None
+        if smargs is not None:
+            target_cond_no = smargs['cond_no']
+        if target_cond_no is None:
+            target_cond_no = 1000
+
+    cv_feat_combo_map, len_total_combos = cv_build_feature_combinations(X, reverse=reverse)
+
     if cv_feat_combo_map is None:
         return
     
@@ -499,35 +590,63 @@ def cv_selection(X, y, tr, folds, scoring_method, fn_better_score):
     
     linreg = LinearRegression()
     
-    best_score = 0
-    best_feat_combo = None
+    best_feat_combo = []
+    best_score = None
+    
     for n_feats, list_of_feat_combos in cv_feat_combo_map.items():
         n_choose_k = len(list_of_feat_combos)
         k = len(list_of_feat_combos[0])
         s_n_choose_k = "{} \\choose {}"
         display(HTML("Cross-validating ${}={}$ combinations of {} features (out of {}) over {} folds...".format("{" + s_n_choose_k.format(n, k) + "}", n_choose_k, k, n, folds)))
-        
+
         for feat_combo in list_of_feat_combos:           
             feat_combo = list(feat_combo)
-            
-            # get neg_mean_squared score of all folds and theb compute the mean
-            mean_cv_score = np.mean(
-                cross_val_score(
-                    linreg
-                    , X[feat_combo]
-                    , y
-                    , cv=folds
-                    , scoring=scoring_method
-                )
+
+            _, _, _, _, score = cv_score(
+                X
+                , y
+                , feat_combo
+                , folds
+                , scoring_method
             )
-            #print("\tscore: {}".format(mean_cv_scor))
-            #print()
-            if best_score == 0 or fn_better_score(mean_cv_score, best_score):
-                best_score = mean_cv_score
-                best_feat_combo = feat_combo
-                print("new best {} score: {}, from feature-set combo: {}".format(scoring_method, best_score, best_feat_combo))
+
+            # now determine if this score is best
+            # vector metrics
+            if scoring_method == mse_train_and_mse_test \
+                or scoring_method == mse_and_delta_mse \
+                or scoring_method == rmse_train_and_rmse_test \
+                or scoring_method == rmse_and_delta_rmse \
+                or scoring_method == condition_no_and_adjusted_rsquared \
+                or scoring_method == condition_no_and_rmse_and_delta_rmse:
+
+                if scoring_method == condition_no_and_adjusted_rsquared:
+                    # q = score[1]/score[0]
+                    # if best_score is None or q > best_score[1]/best_score[0]:
+                    if best_score is None or (score[0] <= target_cond_no and score[1] > best_score[1]):
+                        best_score = score
+                        best_feat_combo = feat_combo
+                        print("new best {} score: {}, from feature-set combo: {}".format(scoring_method, best_score, best_feat_combo))
+
+                elif scoring_method == condition_no_and_rmse_and_delta_rmse:
+                    if best_score is None or (score[0] <= target_cond_no and score[1] < best_score[1] and score[2] < best_score[2]):   #statsmodel uses condition > 1000 to indicate multicolinearity
+                        best_score = score
+                        best_feat_combo = feat_combo
+                        print("new best {} score: {}, from feature-set combo: {}".format(scoring_method, best_score, best_feat_combo))
+
+                else:
+                    if best_score is None or (score[1] < best_score[1] and score[0] < best_score[0]):
+                        best_score = (score[0], score[1])
+                        best_feat_combo = feat_combo
+                        print("new best {} score: {}, from feature-set combo: {}".format(scoring_method, best_score, best_feat_combo))
+            
+            # scalar metrics
+            elif scoring_method == adjusted_rsquared or scoring_method == condition_no:
+                if best_score is None or score < best_score:
+                    best_score = score
+                    best_feat_combo = feat_combo
+                    print("new best {} score: {}, from feature-set combo: {}".format(scoring_method, best_score, best_feat_combo))
     
-    display(HTML("<h4>cv_selected best {} = {}</h4>".format(scoring_method, best_score)))
+    display(HTML("<h4>cv_selected best {} = {}</h4>".format(scoring_method[0], best_score)))
     display(HTML("<h4>cv_selected best feature-set combo ({} of {} features):{}<h/4>".format(len(best_feat_combo), len(base_feature_set), best_feat_combo)))
     display(HTML("<h4>starting feature-set:{}</h4>".format(base_feature_set)))
     to_drop = list(set(base_feature_set).difference(set(best_feat_combo)))
@@ -535,53 +654,159 @@ def cv_selection(X, y, tr, folds, scoring_method, fn_better_score):
     
     return (best_feat_combo, best_score, to_drop)
 
-def lin_reg_model_from_auto_selected_features(
+def lin_reg_model(
     df
     , target
-    , fn_feature_selection=stepwise_selection
-    , tr = None
+    , fn_feature_selection=None
     , title="Linear Regression Model"):
 
     s_html = "<h1>{}</h1><ul>".format(title)
     s_html += "<li><b>target</b>: {}</li>".format(target)
     s_html += "<li><b>starting feature set</b>: {}</li>".format(df.drop(target, axis=1).columns)
-    s_html += "<li><b>training/test split ratio</b>: ${}/{}$</li>".format(1-tr, tr)
     s_html += "</ul>"
     display(HTML(s_html))
-
-    print("Feature selection method: {}".format(fn_feature_selection))
     
     data_fin_df = df.copy()
     
-    y = data_fin_df[target]
+    y = data_fin_df[[target]]
     X = data_fin_df.drop([target], axis=1)
     
-    sel_features, their_pvals = fn_feature_selection(X, y)
+    if fn_feature_selection is not None:
+        print("Feature selection method: {}".format(fn_feature_selection))
+        sel_features, score, to_drop = fn_feature_selection(X, y)
+    else:
+        sel_features = list(X.columns)
+
     f = target + '~' + "+".join(sel_features)
     print("\nformula: {}".format(f))
     
-    if tr is None:
-        X_train, X_test, y_train, y_test, train_mse, test_mse, _ = find_best_train_test_split(X[sel_features], y)
-    else:
-        X_train, X_test, y_train, y_test, train_mse, test_mse, _ = skl_lin_reg_validation(X[sel_features], y, tr, True)
-        
-    #pca = PCA()
-    #X_train_PCA = pca.fit_transform(X_train)
-    #X_test_PCA = pca.transform(X_test)
-    #explained_variance = pca.explained_variance_ratio_
-    #print(explained_variance)
+    X_train, X_test, y_train, y_test, mean_cv_score = cv_score(X, y, sel_features, scoring_method=rmse_train_and_rmse_test)
 
     data_fin_df = pd.concat([y_train, X_train], axis=1, join='inner').reset_index()
     model = ols(formula=f, data=data_fin_df)
 
-    return (sel_features, their_pvals, X_train, X_test, y_train, y_test, train_mse, test_mse, model)
+    return (sel_features, X_train, X_test, y_train, y_test, mean_cv_score[0], mean_cv_score[1], model)
 
-def scatter_plots(df, target=None):
-    df_minus_target = df.drop(target, axis=1) if target is not None else df
+def model_fit_summary(
+    df
+    , sel_features
+    , target
+    , model
+    , train_score
+    , test_score
+    , mv_r_sq_th
+    , mv_delta_score_th
+    , mv_bad_vif_ratio_th
+    , display_regress_diagnostics=False):
+
+    # get results of OLS fit from previously computed model
+    model_fit_results = model.fit()
+    
+    delta_score = abs(test_score - train_score)
+    valid_r_sq = model_fit_results.rsquared >= mv_r_sq_th
+
+    # for each feature, compute VIF and optionally display QQ plot
+    display(HTML("<h3>Regression Diagnostics</h3>"))
+    good_vifs = []
+    bad_vifs = []
+    for idx, feat in enumerate(sel_features):        
+        v = feature_regression_summary(df[sel_features], idx, model_fit_results, display_regress_diagnostics)
+        if v <= 10:
+            good_vifs.append((feat, round(v, 2), model_fit_results.pvalues[sel_features.index(feat)]))
+        else:
+            bad_vifs.append((feat, round(v, 2), model_fit_results.pvalues[sel_features.index(feat)]))    
+    # order good VIF features by p-value
+    good_vifs = sorted(good_vifs, key=lambda good_vif: good_vif[2])    
+    # order bad VIF features by VIF
+    bad_vifs = sorted(bad_vifs, key=lambda bad_vif: bad_vif[1], reverse=True)
+    good_vif_ratio = len(good_vifs)/len(sel_features)
+    bad_vif_ratio = 1 - good_vif_ratio
+    
+    # VIF/colinearity summary
+    display(HTML("<h3>VIF Summary</h3>"))
+    s_html = "<br><b>'GOOD' FEATURES</b> (<i>with LOW COLINEARITY, VIF <= 10</i>), ordered by favorable (increasing) p-val:<ol>"
+    for good_vif in good_vifs:
+        s_html += "<li><b>{:30}</b>: p-val $= {}$</li>".format(good_vif[0], good_vif[2])
+    s_html += "</ol>"
+    display(HTML(s_html))    
+    s_html = "<br><b>'BAD' FEATURES</b> (<i>with HIGH COLINEARITY, VIF > 10</i>), ordered by unfavorable (decreasing) VIF:<ol>"
+    for bad_vif in bad_vifs:
+        s_html += "<li><b>{:30}</b>: VIF $= {}$</li>".format(bad_vif[0], bad_vif[1])
+    s_html += "</ol>"
+    display(HTML(s_html)) 
+    good_vif_ratio = len(good_vifs)/len(sel_features)
+    display(HTML("<br><b>{}% of features are 'GOOD'.<br>".format(round(good_vif_ratio*100,2))))
+    plot_corr(df[[target] + sel_features])
+    
+    # always displays QQ plot of residuals and density plots of target 
+    fig = plt.figure(figsize=(10, 5))
+    axes = fig.subplots(1, 2)
+    sm.graphics.qqplot(model_fit_results.resid, dist=stats.norm, line='45', fit=True, ax=axes[0])
+    sns.distplot(df[target], ax=axes[1])   
+    fig.tight_layout()
+    plt.show();
+    
+    # display the OLS summary
+    display(HTML(model_fit_results.summary().as_html()))
+    
+    s_html = "<h3>Model Validation Summary</h3><ol>"
+    s_html += "<li><b>$R^2={} \ge $</b> acceptable threshold ({}): <b>{}</b></li>".format(
+        model_fit_results.rsquared
+        , mv_r_sq_th
+        , "PASS" if valid_r_sq else "FAIL"
+    )    
+    valid_delta_score = delta_score <= mv_delta_score_th
+    s_html += "<li><b>$\Delta RMSE=|{}-{}|={} \le $</b> acceptable threshold ({}): <b>{}</b></li>".format(
+        test_score
+        , train_score
+        , delta_score
+        , mv_delta_score_th
+        , "PASS" if valid_delta_score else "FAIL"
+    )    
+    # valid_bad_vif_ratio = mv_bad_vif_ratio_th > bad_vif_ratio
+    # s_html += "<li><b>bad VIF ratio = ${}$%</b> < acceptable threshold ({}%): <b>{}</b></li>".format(
+    #     round(bad_vif_ratio*100,2)
+    #     , round(mv_bad_vif_ratio_th*100,2)
+    #     , "PASS" if valid_bad_vif_ratio else "FAIL"
+    # )
+    s_html += "</ol>"
+    #s_html += "<b>Model Validation Assessment: {}</b>".format("PASS" if (valid_r_sq and valid_delta_score and valid_bad_vif_ratio) else "FAIL")
+    s_html += "<b>Model Validation Assessment: {}</b>".format("PASS" if (valid_r_sq and valid_delta_score) else "FAIL")
+    display(HTML(s_html))
+    
+    return (model_fit_results, good_vifs, bad_vifs)
+
+def mfrs_comparison(mfrs, titles, scores_dict):
+    fig = plt.figure(figsize=(10, 5))
+    axes = fig.subplots(1, len(mfrs))
+    for idx, mfr in enumerate(mfrs):
+        sm.graphics.qqplot(mfr.resid, dist=stats.norm, line='45', fit=True, ax=axes[idx])
+        plt.title(titles[idx])
+        axes[idx].set_title(titles[idx], fontsize='small')
+    #fig.tight_layout()
+    plt.show();
+
+    s_html = "<h2>Summary</h2><ol>"
+    s_html += "<li>$R^2$: "
+    for idx, mfr in enumerate(mfrs):   
+        s_html += "model {}: {}".format(idx+1, mfr.rsquared)
+        if idx < len(mfrs)-1:
+            s_html += "; "
+    s_html += "</li>"
+    s_html += "<li>{}: ".format(scores_dict['method'])
+    for idx, score in enumerate(scores_dict['scores']):   
+        s_html += "model {}: {}".format(idx+1, score)
+        if idx < len(scores_dict['scores'])-1:
+            s_html += "; "
+    s_html += "</li>"
+    s_html += "</ol>"
+    display(HTML(s_html))
+
+def scatter_plots(df, target):
+    df_minus_target = df.drop(target, axis=1)
     
     s_html = "<h3>Scatter Plots:</h3><ul>"
-    if target is not None:
-        s_html += "<li><b>target</b>: {}</li>".format(target)
+    s_html += "<li><b>target</b>: {}</li>".format(target)
     s_html += "<li><b>feature set</b>: {}</li>".format(df_minus_target.columns)
     s_html += "</ul>"
     display(HTML(s_html))
@@ -596,18 +821,55 @@ def scatter_plots(df, target=None):
     fig = plt.figure(figsize=(r_w, r_h*r_n))
 
     axes = fig.subplots(r_n, c_n)
-
+    unused = list(range(0, len(axes.flatten()))) if len(df_minus_target.columns) > 1 else [0]
+    
     for index, feat in enumerate(df_minus_target):
         ax = fig.add_subplot(r_n, c_n, index+1)
-        plt.scatter(df[feat], df[target], alpha=0.2)
+        #plt.scatter(df[feat], df[target], alpha=0.2)
+        sns.scatterplot(df[feat], df[target], ax=ax)
         plt.xlabel(feat)
         plt.ylabel(target)
+        unused.remove(index)
 
-    flattened_axes = axes.flatten()
-    for unused in range(len(flattened_axes)-1, index, -1):
-        fig.delaxes(flattened_axes[unused])
+    flattened_axes = axes.flatten() if len(df_minus_target.columns) > 1 else [axes]
+    for u in unused:
+        fig.delaxes(flattened_axes[u])
 
     fig.tight_layout()
+    plt.show();
+
+def scatterplot_comparison(X1, X2, y1, y2):    
+    s_html = "<h3>Scatterplot Comparisons:</h3><ul>"
+    s_html += "</ul>"
+    display(HTML(s_html))
+    
+    n_feats = len(X1.columns)
+    
+    r_w = 4*plot_edge if n_feats > plot_edge else (n_feats*4 if n_feats > 1 else plot_edge)
+    r_h = plot_edge if n_feats > 4 else (plot_edge if n_feats > 1 else plot_edge)
+    
+    #c_n = 4 if n_feats > 4 else n_feats
+    c_n = 2
+    r_n = n_feats
+    r_n = int(r_n) + (1 if n_feats > c_n and r_n % int(r_n) != 0 else 0)        
+
+    fig = plt.figure(figsize=(r_w, r_h*r_n))
+
+    axes = fig.subplots(r_n, c_n)
+    unused = list(range(0, len(axes.flatten()))) if n_feats > 1 else [0]
+
+    for idx in range(0, n_feats):
+        ax1 = fig.add_subplot(r_n, c_n, idx+1)
+        sns.scatterplot(X1[[X1.columns[idx]]], y1, ax=ax1)
+        ax2 = fig.add_subplot(r_n, c_n, idx+2)
+        sns.scatterplot(X1[[X1.columns[idx]]], y1, ax=ax2)
+        unused.remove(idx)
+
+    flattened_axes = axes.flatten() if n_feats > 1 else [axes]
+    for u in unused:
+        fig.delaxes(flattened_axes[u])
+
+    #fig.tight_layout()
     plt.show();
 
 def split_categorical(df, p_cat, target=None):
@@ -648,9 +910,8 @@ def run_full_regression_experiment(
     transformed_and_scaled_df
     , target
     , to_drop
-    , tr
     , mv_r_sq_th
-    , mv_mse_delta_th
+    , mv_delta_score_th
     , mv_bad_vif_ratio_th
     , p_cat
     , fn_init_bin_bases
@@ -698,31 +959,28 @@ def run_full_regression_experiment(
     
     (
         sel_features
-        , their_pvals
         , X_train
         , X_test
         , y_train
         , y_test
-        , train_mse
-        , test_mse
+        , train_score
+        , test_score
         , model
-    ) = lin_reg_model_from_auto_selected_features(transformed_and_scaled_and_categorized_df, target, tr=tr, title=title)
+    ) = lin_reg_model(transformed_and_scaled_and_categorized_df, target, title=title)
 
     (model_fit_results, good_vif_features, bad_vif_features) = model_fit_summary(
         transformed_and_scaled_and_categorized_df
         , sel_features
-        , their_pvals
         , target
         , model
-        , tr
-        , train_mse
-        , test_mse
+        , train_score
+        , test_score
         , mv_r_sq_th
-        , mv_mse_delta_th
+        , mv_delta_score_th
         , mv_bad_vif_ratio_th
     )
     
-    return (sel_features, model_fit_results, train_mse, test_mse, good_vif_features, bad_vif_features, transformed_and_scaled_and_categorized_df)
+    return (sel_features, model_fit_results, train_score, test_score, good_vif_features, bad_vif_features, transformed_and_scaled_and_categorized_df)
 
 def summarize_multicolinearity(df, target, corr_filter_threshold = 0.75):
     #features_only_df = df.drop([target], axis=1)
