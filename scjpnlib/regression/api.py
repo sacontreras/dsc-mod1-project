@@ -61,38 +61,35 @@ def histograms(df):
 
     return included_feats
 
-def histograms_comparison(feature_series, xlabels, titles):    
-    s_html = "<h3>Distributions:</h3><ul>"
+def histograms_comparison(df1, df2, title1, title2):    
+    s_html = "<h3>Distribution Comparisons:</h3><ul>"
     s_html += "</ul>"
     display(HTML(s_html))
     
-    n_feats = len(feature_series)
+    n_feats = len(df1.columns)
     
-    r_w = 4*plot_edge if n_feats > plot_edge else (n_feats*4 if n_feats > 1 else plot_edge)
-    r_h = plot_edge if n_feats > 4 else (plot_edge if n_feats > 1 else plot_edge)
+    r_w = 2*plot_edge
+    r_h = plot_edge
     
-    #c_n = 4 if n_feats > 4 else n_feats
     c_n = 2
-    r_n = n_feats/c_n
-    r_n = int(r_n) + (1 if n_feats > 4 and r_n % int(r_n) != 0 else 0)        
+    r_n = n_feats       
 
     fig = plt.figure(figsize=(r_w, r_h*r_n))
 
     axes = fig.subplots(r_n, c_n)
-    unused = list(range(0, len(axes.flatten()))) if n_feats > 1 else [0]
 
-    for index, fs in enumerate(feature_series):
-        ax = fig.add_subplot(r_n, c_n, index+1)
-        sns.distplot(fs, ax=ax)
-        plt.xlabel(xlabels[index])
-        plt.title(titles[index])
-        unused.remove(index)
+    for index in range(0, n_feats):
+        ax1 = fig.add_subplot(r_n, c_n, 2*index+1)
+        sns.distplot(df1.iloc[:, index], ax=ax1)
+        ax1.set_xlabel(df1.columns[index])
+        ax1.set_title(title1)
 
-    flattened_axes = axes.flatten() if n_feats > 1 else [axes]
-    for u in unused:
-        fig.delaxes(flattened_axes[u])
+        ax2 = fig.add_subplot(r_n, c_n, 2*index+2)
+        sns.distplot(df2.iloc[:, index], ax=ax2)
+        ax2.set_xlabel(df2.columns[index])
+        ax2.set_title(title2)
 
-    #fig.tight_layout()
+    fig.tight_layout()
     plt.show();
 
 def plot_corr(df, filter=None):
@@ -776,29 +773,42 @@ def model_fit_summary(
     
     return (model_fit_results, good_vifs, bad_vifs)
 
-def mfrs_comparison(mfrs, titles, scores_dict):
+def mfrs_comparison(mfrs, scores_dict, titles=["Previous", "Current"]):
     fig = plt.figure(figsize=(10, 5))
     axes = fig.subplots(1, len(mfrs))
     for idx, mfr in enumerate(mfrs):
         sm.graphics.qqplot(mfr.resid, dist=stats.norm, line='45', fit=True, ax=axes[idx])
-        plt.title(titles[idx])
-        axes[idx].set_title(titles[idx], fontsize='small')
+        axes[idx].set_title(titles[idx], fontsize='large')
+    plt.suptitle("Model Comparison", fontsize='x-large')
     #fig.tight_layout()
     plt.show();
 
     s_html = "<h2>Summary</h2><ol>"
-    s_html += "<li>$R^2$: "
+
+    # r squared
+    s_html += "<li>$R^2$:<ol>"
     for idx, mfr in enumerate(mfrs):   
-        s_html += "model {}: {}".format(idx+1, mfr.rsquared)
-        if idx < len(mfrs)-1:
-            s_html += "; "
-    s_html += "</li>"
-    s_html += "<li>{}: ".format(scores_dict['method'])
+        s_html += "<li>{}: {}</li>".format(titles[idx], mfr.rsquared)
+    s_html += "</ol></li>"
+
+    # adj r squared
+    s_html += "<li><b>Adjusted $R^2$</b>:<ol>"
+    for idx, mfr in enumerate(mfrs):   
+        s_html += "<li>{}: {}</li>".format(titles[idx], mfr.rsquared_adj)
+    s_html += "</ol></li>"
+
+    # scoring method
+    s_html += "<li><b>{}</b>: <ol>".format(scores_dict['method'])
     for idx, score in enumerate(scores_dict['scores']):   
-        s_html += "model {}: {}".format(idx+1, score)
-        if idx < len(scores_dict['scores'])-1:
-            s_html += "; "
-    s_html += "</li>"
+        s_html += "<li>{}: {} $\\implies \Delta = {}$</li>".format(titles[idx], score, abs(score[0] - score[1]))
+    s_html += "</ol></li>"
+
+    # condition no.
+    s_html += "<li><b>Condition No.</b>:<ol>"
+    for idx, mfr in enumerate(mfrs):   
+        s_html += "<li>{}: {}</li>".format(titles[idx], mfr.condition_number)
+    s_html += "</ol></li>"
+
     s_html += "</ol>"
     display(HTML(s_html))
 
@@ -826,7 +836,7 @@ def scatter_plots(df, target):
     for index, feat in enumerate(df_minus_target):
         ax = fig.add_subplot(r_n, c_n, index+1)
         #plt.scatter(df[feat], df[target], alpha=0.2)
-        sns.scatterplot(df[feat], df[target], ax=ax)
+        sns.scatterplot(df[feat], df[target], alpha=0.2, ax=ax)
         plt.xlabel(feat)
         plt.ylabel(target)
         unused.remove(index)
@@ -838,38 +848,35 @@ def scatter_plots(df, target):
     fig.tight_layout()
     plt.show();
 
-def scatterplot_comparison(X1, X2, y1, y2):    
-    s_html = "<h3>Scatterplot Comparisons:</h3><ul>"
-    s_html += "</ul>"
+def scatterplot_comparison(X1, X2, y1, y2, title1, title2):    
+    s_html = "<h3>Scatterplot Comparisons:</h3>"
     display(HTML(s_html))
     
     n_feats = len(X1.columns)
     
-    r_w = 4*plot_edge if n_feats > plot_edge else (n_feats*4 if n_feats > 1 else plot_edge)
-    r_h = plot_edge if n_feats > 4 else (plot_edge if n_feats > 1 else plot_edge)
+    r_w = 2*plot_edge
+    r_h = plot_edge
     
-    #c_n = 4 if n_feats > 4 else n_feats
     c_n = 2
-    r_n = n_feats
-    r_n = int(r_n) + (1 if n_feats > c_n and r_n % int(r_n) != 0 else 0)        
+    r_n = n_feats       
 
     fig = plt.figure(figsize=(r_w, r_h*r_n))
 
     axes = fig.subplots(r_n, c_n)
-    unused = list(range(0, len(axes.flatten()))) if n_feats > 1 else [0]
 
-    for idx in range(0, n_feats):
-        ax1 = fig.add_subplot(r_n, c_n, idx+1)
-        sns.scatterplot(X1[[X1.columns[idx]]], y1, ax=ax1)
-        ax2 = fig.add_subplot(r_n, c_n, idx+2)
-        sns.scatterplot(X1[[X1.columns[idx]]], y1, ax=ax2)
-        unused.remove(idx)
+    for index in range(0, n_feats):
+        ax1 = fig.add_subplot(r_n, c_n, 2*index+1)
+        sns.scatterplot(X1.iloc[:, index], y1.iloc[:, 0], alpha=0.2, ax=ax1)
+        ax1.set_ylabel(y1.columns[0])
+        ax1.set_xlabel(X1.columns[index])
+        ax1.set_title(title1)
+        ax2 = fig.add_subplot(r_n, c_n, 2*index+2)
+        sns.scatterplot(X2.iloc[:, index], y2.iloc[:, 0], alpha=0.2, ax=ax2)
+        ax2.set_ylabel(y2.columns[0])
+        ax2.set_xlabel(X2.columns[index])
+        ax2.set_title(title2)
 
-    flattened_axes = axes.flatten() if n_feats > 1 else [axes]
-    for u in unused:
-        fig.delaxes(flattened_axes[u])
-
-    #fig.tight_layout()
+    fig.tight_layout()
     plt.show();
 
 def split_categorical(df, p_cat, target=None):
