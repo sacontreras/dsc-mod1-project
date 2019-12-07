@@ -379,10 +379,14 @@ rmse_test = rmse + '_test'
 delta_rmse = 'delta_' + rmse
 rmse_train_and_rmse_test = rmse_train + '__and__' + rmse_test
 rmse_and_delta_rmse = rmse + '__and__' + delta_rmse
-adjusted_rsquared = 'adjusted_rsquared'
+rsquared = 'rsquared'
+adjusted_rsquared = 'rsquared_adj'
 condition_no = 'condition_no'
+pvals = 'pvals'
 condition_no_and_adjusted_rsquared = condition_no + '__and__' + adjusted_rsquared
 condition_no_and_rmse_and_delta_rmse = condition_no + '__and__' + rmse_and_delta_rmse
+condition_no_and_pvals = condition_no + '__and__' + pvals
+
 cv_scoring_methods = [
     mse_train_and_mse_test
     , mse_and_delta_mse
@@ -392,6 +396,7 @@ cv_scoring_methods = [
     , condition_no
     , condition_no_and_adjusted_rsquared
     , condition_no_and_rmse_and_delta_rmse
+    , condition_no_and_pvals
 ]
 
 def cv_score(
@@ -428,6 +433,10 @@ def cv_score(
     elif scoring_method == condition_no_and_rmse_and_delta_rmse:
         scores_df = pd.DataFrame(columns=[condition_no, rmse, delta_rmse])
 
+    elif scoring_method == condition_no_and_pvals:
+        scores_df = pd.DataFrame(columns=[condition_no, rsquared, adjusted_rsquared, pvals, rmse, delta_rmse])
+
+
     f = y.columns[0] + '~' + "+".join(feat_combo)
     scores = []
 
@@ -447,7 +456,8 @@ def cv_score(
             or scoring_method == mse_and_delta_mse \
             or scoring_method == rmse_train_and_rmse_test \
             or scoring_method == rmse_and_delta_rmse \
-            or scoring_method == condition_no_and_rmse_and_delta_rmse:
+            or scoring_method == condition_no_and_rmse_and_delta_rmse \
+            or scoring_method == condition_no_and_pvals:
 
             y_hat_train = model_fit_results.predict(X_train)
             y_hat_test = model_fit_results.predict(X_test)
@@ -479,24 +489,39 @@ def cv_score(
                 ]
 
             elif scoring_method == rmse_and_delta_rmse:
+                _rmse_test = np.sqrt(_mse_test)
                 _rmse_train = np.sqrt(_mse_train)
                 data = [
                     {
                         rmse: _rmse_train
-                        , delta_rmse: abs(np.sqrt(_mse_test) - _rmse_train)
+                        , delta_rmse: abs(_rmse_test - _rmse_train)
                     }
                 ]
 
             elif scoring_method == condition_no_and_rmse_and_delta_rmse:
+                _rmse_test = np.sqrt(_mse_test)
                 _rmse_train = np.sqrt(_mse_train)
                 data = [
                     {
                         condition_no: model_fit_results.condition_number
                         , rmse: _rmse_train
-                        , delta_rmse: abs(np.sqrt(_mse_test) - _rmse_train)
+                        , delta_rmse: abs(_rmse_test - _rmse_train)
                     }
                 ]
-                scores_df = scores_df.append(data, ignore_index=True, sort=False)
+
+            elif scoring_method == condition_no_and_pvals:
+                _rmse_test = np.sqrt(_mse_test)
+                _rmse_train = np.sqrt(_mse_train)
+                data = [
+                    {
+                        condition_no: model_fit_results.condition_number
+                        , rsquared: model_fit_results.rsquared
+                        , adjusted_rsquared: model_fit_results.rsquared_adj
+                        , pvals: model_fit_results.pvalues
+                        , rmse: _rmse_train
+                        , delta_rmse: abs(_rmse_test - _rmse_train)
+                    }
+                ]
 
             scores_df = scores_df.append(data, ignore_index=True, sort=False)
 
@@ -557,27 +582,39 @@ def cv_score(
         mean_delta_rmse = scores_df[delta_rmse].mean()
         mean_cv_score = (mean_cond_no, mean_rmse, mean_delta_rmse)
 
+    elif scoring_method == condition_no_and_pvals:
+        mean_cond_no = scores_df[condition_no].mean()
+        mean_rsq = scores_df[rsquared].mean()
+        mean_adj_rsq = scores_df[adjusted_rsquared].mean()
+        pvals_df = pd.DataFrame(columns=feat_combo)
+        for idx, row in  scores_df.iterrows():
+            list_pvals = list(row[pvals].values[1:])
+            pvals_df = pvals_df.append(pd.Series(list_pvals, index=pvals_df.columns), ignore_index=True, sort=False)
+        mean_pvals = []
+        for idx, _ in enumerate(feat_combo):
+            mean_pvals.append(pvals_df.iloc[:, idx].mean())
+        mean_rmse = scores_df[rmse].mean()
+        mean_delta_rmse = scores_df[delta_rmse].mean()
+        mean_cv_score = (mean_cond_no, mean_rsq, mean_adj_rsq, mean_pvals, mean_rmse, mean_delta_rmse)
+
     return (X_train, X_test, y_train, y_test, mean_cv_score)
 
 def cv_selection(
     X
     , y
     , folds=5
-    , scoring_method=condition_no_and_rmse_and_delta_rmse
     , reverse=False
     , smargs=None):
 
-    if scoring_method not in cv_scoring_methods:
-        raise ValueError("Unknown scoring_method: '{}'".format(scoring_method))
+    scores_df = pd.DataFrame(columns=['n_features', 'features', condition_no, rsquared, adjusted_rsquared, pvals, rmse, delta_rmse])
 
-    if scoring_method == condition_no_and_adjusted_rsquared or scoring_method == condition_no_and_rmse_and_delta_rmse:
-        target_cond_no = None
-        if smargs is not None:
-            target_cond_no = smargs['cond_no']
-        if target_cond_no is None:
-            target_cond_no = 1000
+    target_cond_no = None
+    if smargs is not None:
+        target_cond_no = smargs['cond_no']
+    if target_cond_no is None:
+        target_cond_no = 1000
 
-    cv_feat_combo_map, len_total_combos = cv_build_feature_combinations(X, reverse=reverse)
+    cv_feat_combo_map, _ = cv_build_feature_combinations(X, reverse=reverse)
 
     if cv_feat_combo_map is None:
         return
@@ -585,12 +622,10 @@ def cv_selection(
     base_feature_set = list(X.columns)
     n = len(base_feature_set)
     
-    linreg = LinearRegression()
-    
     best_feat_combo = []
     best_score = None
     
-    for n_feats, list_of_feat_combos in cv_feat_combo_map.items():
+    for _, list_of_feat_combos in cv_feat_combo_map.items():
         n_choose_k = len(list_of_feat_combos)
         k = len(list_of_feat_combos[0])
         s_n_choose_k = "{} \\choose {}"
@@ -604,52 +639,39 @@ def cv_selection(
                 , y
                 , feat_combo
                 , folds
-                , scoring_method
+                , condition_no_and_pvals
             )
 
             # now determine if this score is best
-            # vector metrics
-            if scoring_method == mse_train_and_mse_test \
-                or scoring_method == mse_and_delta_mse \
-                or scoring_method == rmse_train_and_rmse_test \
-                or scoring_method == rmse_and_delta_rmse \
-                or scoring_method == condition_no_and_adjusted_rsquared \
-                or scoring_method == condition_no_and_rmse_and_delta_rmse:
-
-                if scoring_method == condition_no_and_adjusted_rsquared:
-                    # q = score[1]/score[0]
-                    # if best_score is None or q > best_score[1]/best_score[0]:
-                    if best_score is None or (score[0] <= target_cond_no and score[1] > best_score[1]):
-                        best_score = score
-                        best_feat_combo = feat_combo
-                        print("new best {} score: {}, from feature-set combo: {}".format(scoring_method, best_score, best_feat_combo))
-
-                elif scoring_method == condition_no_and_rmse_and_delta_rmse:
-                    if best_score is None or (score[0] <= target_cond_no and score[1] < best_score[1] and score[2] < best_score[2]):   #statsmodel uses condition > 1000 to indicate multicolinearity
-                        best_score = score
-                        best_feat_combo = feat_combo
-                        print("new best {} score: {}, from feature-set combo: {}".format(scoring_method, best_score, best_feat_combo))
-
-                else:
-                    if best_score is None or (score[1] < best_score[1] and score[0] < best_score[0]):
-                        best_score = (score[0], score[1])
-                        best_feat_combo = feat_combo
-                        print("new best {} score: {}, from feature-set combo: {}".format(scoring_method, best_score, best_feat_combo))
-            
-            # scalar metrics
-            elif scoring_method == adjusted_rsquared or scoring_method == condition_no:
-                if best_score is None or score < best_score:
-                    best_score = score
-                    best_feat_combo = feat_combo
-                    print("new best {} score: {}, from feature-set combo: {}".format(scoring_method, best_score, best_feat_combo))
+            is_in_conf_interval = False not in [True if pval >= 0.0 and pval <= 0.05 else False for pval in score[3]]
+            is_non_colinear = score[0] <= target_cond_no
+            if is_non_colinear and is_in_conf_interval and (best_score is None or (score[1] > best_score[1] and score[2] > best_score[2])):
+                best_score = score
+                best_feat_combo = feat_combo
+                print("new best {} score: {}, from feature-set combo: {}".format(condition_no_and_pvals, best_score, best_feat_combo))
+                data = [
+                    {
+                        'n_features': len(feat_combo)
+                        , 'features': feat_combo
+                        , condition_no: score[0]
+                        , rsquared: score[1]
+                        , adjusted_rsquared: score[2]
+                        , pvals: score[3]
+                        , rmse: score[4]
+                        , delta_rmse: score[5]
+                    }
+                ]
+                scores_df = scores_df.append(data, ignore_index=True, sort=False)
     
-    display(HTML("<h4>cv_selected best {} = {}</h4>".format(scoring_method[0], best_score)))
+    print_df(scores_df)
+
+    display(HTML("<h4>cv_selected best {} = {}</h4>".format(condition_no_and_pvals, best_score)))
     display(HTML("<h4>cv_selected best feature-set combo ({} of {} features):{}<h/4>".format(len(best_feat_combo), len(base_feature_set), best_feat_combo)))
     display(HTML("<h4>starting feature-set:{}</h4>".format(base_feature_set)))
     to_drop = list(set(base_feature_set).difference(set(best_feat_combo)))
     display(HTML("<h4>cv_selection suggests dropping {}.</h4>".format(to_drop if len(to_drop)>0 else "<i>no features</i> from {}".format(base_feature_set))))
-    
-    return (best_feat_combo, best_score, to_drop)
+
+    return (scores_df, best_feat_combo, best_score, to_drop)
 
 def lin_reg_model(
     df
