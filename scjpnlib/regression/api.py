@@ -131,7 +131,7 @@ def feature_regression_summary(
         # ‘endog versus exog’, ‘residuals versus exog’, ‘fitted versus exog’ and ‘fitted plus residual versus exog’
         fig = plt.figure(constrained_layout=True, figsize=(2.25*plot_edge,4*plot_edge))
         fig = smgrpu.create_mpl_fig(fig)
-        gs = GridSpec(4, 2, figure=fig)
+        gs = GridSpec(3, 2, figure=fig)
         ax_fit = fig.add_subplot(gs[0, 0])
         ax_partial_residuals = fig.add_subplot(gs[0, 1])
         ax_partregress = fig.add_subplot(gs[1, 0])
@@ -176,7 +176,7 @@ def feature_regression_summary(
         # use wrapper since it's availab;e!
         sm.graphics.plot_ccpr(model_fit_results, feat, ax=ax_ccpr)
         ax_ccpr.set_title('CCPR Plot', fontsize='large')
-        
+
         sns.distplot(df[feat], ax=ax_dist)
         
         fig.suptitle('Regression Plots for %s' % exog_name, fontsize="large")
@@ -385,7 +385,12 @@ condition_no = 'condition_no'
 pvals = 'pvals'
 condition_no_and_adjusted_rsquared = condition_no + '__and__' + adjusted_rsquared
 condition_no_and_rmse_and_delta_rmse = condition_no + '__and__' + rmse_and_delta_rmse
-condition_no_and_pvals = condition_no + '__and__' + pvals
+condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse = \
+    condition_no \
+    + '__and__' + pvals \
+    + '__and__' + rsquared \
+    + '__and__' + adjusted_rsquared \
+    + '__and__' + rmse_and_delta_rmse
 
 cv_scoring_methods = [
     mse_train_and_mse_test
@@ -396,7 +401,7 @@ cv_scoring_methods = [
     , condition_no
     , condition_no_and_adjusted_rsquared
     , condition_no_and_rmse_and_delta_rmse
-    , condition_no_and_pvals
+    , condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse
 ]
 
 def cv_score(
@@ -433,7 +438,7 @@ def cv_score(
     elif scoring_method == condition_no_and_rmse_and_delta_rmse:
         scores_df = pd.DataFrame(columns=[condition_no, rmse, delta_rmse])
 
-    elif scoring_method == condition_no_and_pvals:
+    elif scoring_method == condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse:
         scores_df = pd.DataFrame(columns=[condition_no, rsquared, adjusted_rsquared, pvals, rmse, delta_rmse])
 
 
@@ -457,7 +462,7 @@ def cv_score(
             or scoring_method == rmse_train_and_rmse_test \
             or scoring_method == rmse_and_delta_rmse \
             or scoring_method == condition_no_and_rmse_and_delta_rmse \
-            or scoring_method == condition_no_and_pvals:
+            or scoring_method == condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse:
 
             y_hat_train = model_fit_results.predict(X_train)
             y_hat_test = model_fit_results.predict(X_test)
@@ -509,7 +514,7 @@ def cv_score(
                     }
                 ]
 
-            elif scoring_method == condition_no_and_pvals:
+            elif scoring_method == condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse:
                 _rmse_test = np.sqrt(_mse_test)
                 _rmse_train = np.sqrt(_mse_train)
                 data = [
@@ -582,7 +587,7 @@ def cv_score(
         mean_delta_rmse = scores_df[delta_rmse].mean()
         mean_cv_score = (mean_cond_no, mean_rmse, mean_delta_rmse)
 
-    elif scoring_method == condition_no_and_pvals:
+    elif scoring_method == condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse:
         mean_cond_no = scores_df[condition_no].mean()
         mean_rsq = scores_df[rsquared].mean()
         mean_adj_rsq = scores_df[adjusted_rsquared].mean()
@@ -639,7 +644,7 @@ def cv_selection(
                 , y
                 , feat_combo
                 , folds
-                , condition_no_and_pvals
+                , condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse
             )
 
             # now determine if this score is best
@@ -648,7 +653,7 @@ def cv_selection(
             if is_non_colinear and is_in_conf_interval and (best_score is None or (score[1] > best_score[1] and score[2] > best_score[2])):
                 best_score = score
                 best_feat_combo = feat_combo
-                print("new best {} score: {}, from feature-set combo: {}".format(condition_no_and_pvals, best_score, best_feat_combo))
+                print("new best {} score: {}, from feature-set combo: {}".format(condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse, best_score, best_feat_combo))
                 data = [
                     {
                         'n_features': len(feat_combo)
@@ -665,7 +670,7 @@ def cv_selection(
     
     print_df(scores_df)
 
-    display(HTML("<h4>cv_selected best {} = {}</h4>".format(condition_no_and_pvals, best_score)))
+    display(HTML("<h4>cv_selected best {} = {}</h4>".format(condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse, best_score)))
     display(HTML("<h4>cv_selected best feature-set combo ({} of {} features):{}<h/4>".format(len(best_feat_combo), len(base_feature_set), best_feat_combo)))
     display(HTML("<h4>starting feature-set:{}</h4>".format(base_feature_set)))
     to_drop = list(set(base_feature_set).difference(set(best_feat_combo)))
@@ -720,6 +725,11 @@ def model_fit_summary(
 
     # get results of OLS fit from previously computed model
     model_fit_results = model.fit()
+    model_fit_results = model_fit_results.get_robustcov_results(cov_type='HC0')
+    #model_fit_results = model.fit(cov_type='HC0')
+    #model_fit_results = model.fit(cov_type='HC1')
+    #model_fit_results = model.fit(cov_type='HC2')
+    #model_fit_results = model.fit(cov_type='HC3')
     
     delta_score = abs(test_score - train_score)
     valid_r_sq = model_fit_results.rsquared >= mv_r_sq_th
@@ -758,10 +768,11 @@ def model_fit_summary(
     plot_corr(df[[target] + sel_features])
     
     # always displays QQ plot of residuals and density plots of target 
-    fig = plt.figure(figsize=(10, 5))
-    axes = fig.subplots(1, 2)
+    fig = plt.figure(figsize=(15, 5))
+    axes = fig.subplots(1, 3)
     sm.graphics.qqplot(model_fit_results.resid, dist=stats.norm, line='45', fit=True, ax=axes[0])
     sns.distplot(df[target], ax=axes[1])   
+    sm.graphics.influence_plot(model_fit_results, ax=axes[2])
     fig.tight_layout()
     plt.show();
     
@@ -782,14 +793,7 @@ def model_fit_summary(
         , mv_delta_score_th
         , "PASS" if valid_delta_score else "FAIL"
     )    
-    # valid_bad_vif_ratio = mv_bad_vif_ratio_th > bad_vif_ratio
-    # s_html += "<li><b>bad VIF ratio = ${}$%</b> < acceptable threshold ({}%): <b>{}</b></li>".format(
-    #     round(bad_vif_ratio*100,2)
-    #     , round(mv_bad_vif_ratio_th*100,2)
-    #     , "PASS" if valid_bad_vif_ratio else "FAIL"
-    # )
     s_html += "</ol>"
-    #s_html += "<b>Model Validation Assessment: {}</b>".format("PASS" if (valid_r_sq and valid_delta_score and valid_bad_vif_ratio) else "FAIL")
     s_html += "<b>Model Validation Assessment: {}</b>".format("PASS" if (valid_r_sq and valid_delta_score) else "FAIL")
     display(HTML(s_html))
     

@@ -41,6 +41,14 @@ def cols_with_nulls(df):
 def get_remaining_features(df, target, features):
     return df.drop([target] + features, axis=1).columns
 
+# ordered difference
+def list_difference(l1, l2):
+    list_diff = []
+    for item in l1:
+        if item not in l2:
+            list_diff.append(item)
+    return list_diff
+
 def categorical_probability(df, col, exclude_null_vals=True):
     unique_vals = df[col].unique()
     n_unique = len(unique_vals) 
