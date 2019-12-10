@@ -721,11 +721,12 @@ def model_fit_summary(
     , mv_r_sq_th
     , mv_delta_score_th
     , mv_bad_vif_ratio_th
-    , display_regress_diagnostics=False):
+    , display_regress_diagnostics=False
+    , display_infl_plot=False):
 
     # get results of OLS fit from previously computed model
     model_fit_results = model.fit()
-    model_fit_results = model_fit_results.get_robustcov_results(cov_type='HC0')
+    #model_fit_results = model_fit_results.get_robustcov_results(cov_type='HC0')
     #model_fit_results = model.fit(cov_type='HC0')
     #model_fit_results = model.fit(cov_type='HC1')
     #model_fit_results = model.fit(cov_type='HC2')
@@ -768,11 +769,12 @@ def model_fit_summary(
     plot_corr(df[[target] + sel_features])
     
     # always displays QQ plot of residuals and density plots of target 
-    fig = plt.figure(figsize=(15, 5))
-    axes = fig.subplots(1, 3)
+    fig = plt.figure(figsize=(15, 5) if display_infl_plot else (10, 5))
+    axes = fig.subplots(1, 3 if display_infl_plot else 2)
     sm.graphics.qqplot(model_fit_results.resid, dist=stats.norm, line='45', fit=True, ax=axes[0])
-    sns.distplot(df[target], ax=axes[1])   
-    sm.graphics.influence_plot(model_fit_results, ax=axes[2])
+    sns.distplot(df[target], ax=axes[1])
+    if display_infl_plot:   
+        sm.graphics.influence_plot(model_fit_results, ax=axes[2])
     fig.tight_layout()
     plt.show();
     
