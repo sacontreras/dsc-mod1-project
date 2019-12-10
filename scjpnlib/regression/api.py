@@ -722,11 +722,10 @@ def model_fit_summary(
     , mv_delta_score_th
     , mv_bad_vif_ratio_th
     , display_regress_diagnostics=False
-    , display_infl_plot=False):
+    , display_infl_plot=True):
 
     # get results of OLS fit from previously computed model
     model_fit_results = model.fit()
-    #model_fit_results = model_fit_results.get_robustcov_results(cov_type='HC0')
     #model_fit_results = model.fit(cov_type='HC0')
     #model_fit_results = model.fit(cov_type='HC1')
     #model_fit_results = model.fit(cov_type='HC2')
@@ -736,7 +735,8 @@ def model_fit_summary(
     valid_r_sq = model_fit_results.rsquared >= mv_r_sq_th
 
     # for each feature, compute VIF and optionally display QQ plot
-    display(HTML("<h3>Regression Diagnostics</h3>"))
+    if display_regress_diagnostics:
+        display(HTML("<h3>Regression Diagnostics</h3>"))
     good_vifs = []
     bad_vifs = []
     for idx, feat in enumerate(sel_features):        
@@ -781,23 +781,23 @@ def model_fit_summary(
     # display the OLS summary
     display(HTML(model_fit_results.summary().as_html()))
     
-    s_html = "<h3>Model Validation Summary</h3><ol>"
-    s_html += "<li><b>$R^2={} \ge $</b> acceptable threshold ({}): <b>{}</b></li>".format(
-        model_fit_results.rsquared
-        , mv_r_sq_th
-        , "PASS" if valid_r_sq else "FAIL"
-    )    
-    valid_delta_score = delta_score <= mv_delta_score_th
-    s_html += "<li><b>$\Delta RMSE=|{}-{}|={} \le $</b> acceptable threshold ({}): <b>{}</b></li>".format(
-        test_score
-        , train_score
-        , delta_score
-        , mv_delta_score_th
-        , "PASS" if valid_delta_score else "FAIL"
-    )    
-    s_html += "</ol>"
-    s_html += "<b>Model Validation Assessment: {}</b>".format("PASS" if (valid_r_sq and valid_delta_score) else "FAIL")
-    display(HTML(s_html))
+    # s_html = "<h3>Model Validation Summary</h3><ol>"
+    # s_html += "<li><b>$R^2={} \ge $</b> acceptable threshold ({}): <b>{}</b></li>".format(
+    #     model_fit_results.rsquared
+    #     , mv_r_sq_th
+    #     , "PASS" if valid_r_sq else "FAIL"
+    # )    
+    # valid_delta_score = delta_score <= mv_delta_score_th
+    # s_html += "<li><b>$\Delta RMSE=|{}-{}|={} \le $</b> acceptable threshold ({}): <b>{}</b></li>".format(
+    #     test_score
+    #     , train_score
+    #     , delta_score
+    #     , mv_delta_score_th
+    #     , "PASS" if valid_delta_score else "FAIL"
+    # )    
+    # s_html += "</ol>"
+    # s_html += "<b>Model Validation Assessment: {}</b>".format("PASS" if (valid_r_sq and valid_delta_score) else "FAIL")
+    # display(HTML(s_html))
     
     return (model_fit_results, good_vifs, bad_vifs)
 
