@@ -49,6 +49,13 @@ def list_difference(l1, l2):
             list_diff.append(item)
     return list_diff
 
+def list_remove_difference(l1, l2):
+    copy_of_l1 = l1.copy()
+    for item in copy_of_l1:
+        if item not in l2:
+            l1.remove(item)
+    return l1
+
 def categorical_probability(df, col, exclude_null_vals=True):
     unique_vals = df[col].unique()
     n_unique = len(unique_vals) 

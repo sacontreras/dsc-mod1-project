@@ -722,7 +722,7 @@ def model_fit_summary(
     , mv_delta_score_th
     , mv_bad_vif_ratio_th
     , display_regress_diagnostics=False
-    , display_infl_plot=True):
+    , display_infl_plot=False):
 
     # get results of OLS fit from previously computed model
     model_fit_results = model.fit()
@@ -801,7 +801,7 @@ def model_fit_summary(
     
     return (model_fit_results, good_vifs, bad_vifs)
 
-def mfrs_comparison(mfrs, scores_dict, titles=["Previous", "Current"]):
+def mfrs_comparison(models, mfrs, scores_dict, titles=["Previous", "Current"]):
     fig = plt.figure(figsize=(10, 5))
     axes = fig.subplots(1, len(mfrs))
     for idx, mfr in enumerate(mfrs):
@@ -813,11 +813,35 @@ def mfrs_comparison(mfrs, scores_dict, titles=["Previous", "Current"]):
 
     s_html = "<h2>Summary</h2><ol>"
 
+    # features include in models
+    s_html += "<li><b>Indep.</b>:<ol>"
+    for idx, model in enumerate(models):   
+        s_html += "<li>{}: {}</li>".format(titles[idx], model.exog_names[1:])
+    s_html += "</ol></li>"
+
+    # "delta" features
+    if len(models[1].exog_names) < len(models[0].exog_names):
+        feats_dropped = list_difference(models[0].exog_names, models[1].exog_names)
+        s_html += "<li><font color='red'>DROPPED</font> Indep.: {}</li>".format(feats_dropped)
+    elif len(models[1].exog_names) > len(models[0].exog_names):
+        feats_added = list_difference(models[1].exog_names, models[0].exog_names)
+        s_html += "<li><font color='green'>ADDED</font> Indep.: {}</li>".format(feats_added)
+    else:
+        s_html += "<li>NO DIFFERENCE in Indep. (perhaps transformations/scalings of indeps. differ?)</li>"
+
     # r squared
     s_html += "<li>$R^2$:<ol>"
     for idx, mfr in enumerate(mfrs):   
         s_html += "<li>{}: {}</li>".format(titles[idx], mfr.rsquared)
     s_html += "</ol></li>"
+
+    # delta r squared
+    d_rsq = mfrs[1].rsquared - mfrs[0].rsquared
+    s_html += "<li>$\Delta R^2$: {} ({})</li>".format(
+        d_rsq,
+         "<font color='green'>{}% better/increase</font>".format(round((mfrs[1].rsquared/mfrs[0].rsquared)*100, 2)) if d_rsq > 0 \
+                else ("<font color='red'>{}% worse/reduction</font>".format(round((1-mfrs[1].rsquared/mfrs[0].rsquared)*100, 2)) if d_rsq < 0 else "no change")
+    )
 
     # adj r squared
     s_html += "<li><b>Adjusted $R^2$</b>:<ol>"
@@ -825,10 +849,33 @@ def mfrs_comparison(mfrs, scores_dict, titles=["Previous", "Current"]):
         s_html += "<li>{}: {}</li>".format(titles[idx], mfr.rsquared_adj)
     s_html += "</ol></li>"
 
+    # delta r sq - adj r sq
+    d_arsq_0 = mfrs[0].rsquared - mfrs[0].rsquared_adj
+    d_arsq_1 = mfrs[1].rsquared - mfrs[1].rsquared_adj
+    d_d_arsq = d_arsq_1 - d_arsq_0
+    s_html += "<li><b>$\Delta$ ($R^2 -$ Adj. $R^2$)</b>: {} ({})</li>".format(
+        d_d_arsq
+        , "<font color='green'>{}% better/reduction</font>".format(round((d_arsq_0/d_arsq_1)*100, 2)) if d_d_arsq < 0 \
+            else ("<font color='red'>{}% worse/increase</font>".format(round((d_arsq_1/d_arsq_0)*100, 2)) if d_d_arsq > 0 else "no change")
+        )
+
     # scoring method
     s_html += "<li><b>{}</b>: <ol>".format(scores_dict['method'])
-    for idx, score in enumerate(scores_dict['scores']):   
-        s_html += "<li>{}: {} $\\implies \Delta = {}$</li>".format(titles[idx], score, abs(score[0] - score[1]))
+    scores = scores_dict['scores']
+    d_score_0 = abs(scores[0][0] - scores[0][1])
+    s_html += "<li>{}: {} $\\implies \Delta: {}$</li>".format(titles[0], scores[0], d_score_0)
+    d_score_1 = abs(scores[1][0] - scores[1][1])
+    s_html += "<li>{}: {} $\\implies \Delta: {}$</li>".format(titles[1], scores[1], d_score_1)
+    s_html += "</ol></li>"
+
+    # delta scoring method
+    d_d_score = d_score_1 - d_score_0
+    s_html += "<li><b>$\Delta \Delta$ {}</b>: {} ({})<ol>".format(
+        scores_dict['method']
+        , d_d_score
+        , "<font color='green'>{}% better/reduction</font>".format(round((d_score_0/d_score_1)*100, 2)) if d_d_score < 0 \
+            else ("<font color='red'>{}% worse/increase</font>".format(round((d_score_1/d_score_0)*100, 2)) if d_d_score > 0 else "no change")
+    )    
     s_html += "</ol></li>"
 
     # condition no.
@@ -836,6 +883,14 @@ def mfrs_comparison(mfrs, scores_dict, titles=["Previous", "Current"]):
     for idx, mfr in enumerate(mfrs):   
         s_html += "<li>{}: {}</li>".format(titles[idx], mfr.condition_number)
     s_html += "</ol></li>"
+
+    # delta cond. no.
+    d_condno = mfrs[1].condition_number - mfrs[0].condition_number
+    s_html += "<li><b>$\Delta$ Condition No</b>: {} ({})</li>".format(
+        d_condno
+        , "<font color='green'>{}% better/reduction</font>".format(round((mfrs[0].condition_number/mfrs[1].condition_number)*100, 2)) if d_condno < 0 \
+            else ("<font color='red'>{}% worse/increase</font>".format(round((mfrs[1].condition_number/mfrs[0].condition_number)*100, 2)) if d_condno > 0 else "no change")
+    )
 
     s_html += "</ol>"
     display(HTML(s_html))
@@ -940,82 +995,6 @@ def split_categorical(df, p_cat, target=None):
     display(HTML(s_html))
         
     return (cat_classification_df, categorical_features, continuous_features)
-
-def run_full_regression_experiment(
-    transformed_and_scaled_df
-    , target
-    , to_drop
-    , mv_r_sq_th
-    , mv_delta_score_th
-    , mv_bad_vif_ratio_th
-    , p_cat
-    , fn_init_bin_bases
-    , cont_and_cat_features_tuple=None
-    , title=None):  
-
-    # handle restricting to filter features: continuous + categorical
-    if cont_and_cat_features_tuple is not None:
-        continuous_features = cont_and_cat_features_tuple[0]
-        categorical_features = cont_and_cat_features_tuple[1]
-        all_features = continuous_features + categorical_features
-        transformed_and_scaled_minus_todrop_df = pd.concat(
-            [
-                transformed_and_scaled_df[[target]]
-                , transformed_and_scaled_df[all_features]
-            ]
-            , axis=1
-            , join='inner'
-        )
-    else:
-        transformed_and_scaled_minus_todrop_df = transformed_and_scaled_df.copy()
-
-    if to_drop is not None and len(to_drop) > 0:
-        transformed_and_scaled_minus_todrop_df = transformed_and_scaled_minus_todrop_df.drop(to_drop, axis=1)  
-    
-    # if it is None then we need to partition...
-    if cont_and_cat_features_tuple is None:      
-        (
-            kchd_cat_classification_df
-            , categorical_features
-            , continuous_features
-        ) = split_categorical(transformed_and_scaled_minus_todrop_df, p_cat, target)
-    
-    (
-        default_handling_categoricals_list
-        , special_handling_categoricals_map
-    ) = fn_init_bin_bases(transformed_and_scaled_minus_todrop_df, categorical_features)
-    
-    transformed_and_scaled_and_categorized_df = categorize(
-        transformed_and_scaled_minus_todrop_df
-        , default_handling_categoricals_list
-        , special_handling_categoricals_map
-    )
-    transformed_and_scaled_and_categorized_df = encode_col_names(transformed_and_scaled_and_categorized_df)
-    
-    (
-        sel_features
-        , X_train
-        , X_test
-        , y_train
-        , y_test
-        , train_score
-        , test_score
-        , model
-    ) = lin_reg_model(transformed_and_scaled_and_categorized_df, target, title=title)
-
-    (model_fit_results, good_vif_features, bad_vif_features) = model_fit_summary(
-        transformed_and_scaled_and_categorized_df
-        , sel_features
-        , target
-        , model
-        , train_score
-        , test_score
-        , mv_r_sq_th
-        , mv_delta_score_th
-        , mv_bad_vif_ratio_th
-    )
-    
-    return (sel_features, model_fit_results, train_score, test_score, good_vif_features, bad_vif_features, transformed_and_scaled_and_categorized_df)
 
 def summarize_multicolinearity(df, target, corr_filter_threshold = 0.75):
     #features_only_df = df.drop([target], axis=1)
