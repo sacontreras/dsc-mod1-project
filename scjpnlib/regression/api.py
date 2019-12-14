@@ -781,24 +781,6 @@ def model_fit_summary(
     # display the OLS summary
     display(HTML(model_fit_results.summary().as_html()))
     
-    # s_html = "<h3>Model Validation Summary</h3><ol>"
-    # s_html += "<li><b>$R^2={} \ge $</b> acceptable threshold ({}): <b>{}</b></li>".format(
-    #     model_fit_results.rsquared
-    #     , mv_r_sq_th
-    #     , "PASS" if valid_r_sq else "FAIL"
-    # )    
-    # valid_delta_score = delta_score <= mv_delta_score_th
-    # s_html += "<li><b>$\Delta RMSE=|{}-{}|={} \le $</b> acceptable threshold ({}): <b>{}</b></li>".format(
-    #     test_score
-    #     , train_score
-    #     , delta_score
-    #     , mv_delta_score_th
-    #     , "PASS" if valid_delta_score else "FAIL"
-    # )    
-    # s_html += "</ol>"
-    # s_html += "<b>Model Validation Assessment: {}</b>".format("PASS" if (valid_r_sq and valid_delta_score) else "FAIL")
-    # display(HTML(s_html))
-    
     return (model_fit_results, good_vifs, bad_vifs)
 
 def mfrs_comparison(models, mfrs, scores_dict, titles=["Previous", "Current"]):

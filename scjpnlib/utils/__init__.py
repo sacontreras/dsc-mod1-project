@@ -9,22 +9,25 @@ from folium import plugins
 # this function allows displaying dataframes using print() with pandas "pretty" HTML formatting
 #   so that multiple "pretty" displays of dataframes can be rendered "inline"
 #   default behavior (without specifying a range) is identical to that of df.head()
-def print_df(df, n = None):
+def print_df(df, n = None, tail=False):
     pd.set_option('display.max_columns', None)
     pd.set_option('display.max_rows', None)
     pd.set_option('display.max_colwidth', -1)
 
     if n is None:
         n = len(df)
-    display(HTML(df.head(n).to_html()))
+    display(HTML(df.head(n).to_html() if not tail else df.tail(n).to_html()))
     display(HTML("<br>{} rows x {} columns<br><br>".format(n, len(df.columns))))
 
     pd.reset_option('display.max_columns')
     pd.reset_option('display.max_rows')
     pd.reset_option('display.max_colwidth')
 
-def print_df_head(df):
-    print_df(df, n=5)
+def print_df_head(df, n=5):
+    print_df(df, n)
+
+def print_df_tail(df, n=5):
+    print_df(df, n, tail=True)
 
 # note that we can qualitatively retrieve this information via df.info() but this function
 #   provides us with an object we can manipulate programatically, whereas df.info() just 
@@ -89,10 +92,12 @@ def clean_offending_values(
     df
     , numeric_replacement_rules = None
     , string_replacement_rules = None
-    , friendly_name_of_df = ""):
+    , friendly_name_of_df = ""
+    , verbose=True):
 
     friendly_name = friendly_name_of_df if len(friendly_name_of_df) > 0 else "df"
-    print("*** CLEANING VALUES of {}: BEGIN ***".format(friendly_name))
+    if verbose:
+        print("*** CLEANING VALUES of {}: BEGIN ***".format(friendly_name))
     
     has_numeric_rules = numeric_replacement_rules is not None
     has_string_rules = string_replacement_rules is not None
@@ -101,16 +106,19 @@ def clean_offending_values(
 
         if has_numeric_rules:
             for col, rules in numeric_replacement_rules.items():
-                print("Rules for '{}' column value replacement are: {}".format(col, rules))
+                if verbose:
+                    print("Rules for '{}' column value replacement are: {}".format(col, rules))
                 # first determine if there are any offending values, which means we first need to collate said values
                 offending_vals = []
                 for val, rule in rules:
                     offending_vals.append(val)
-                print("Looking for rows with '{}' values {} ...".format(col, offending_vals))
+                if verbose:
+                    print("Looking for rows with '{}' values {} ...".format(col, offending_vals))
                 df_rows_with_outliers = df[df[col].isin(offending_vals)==True]
                 if len(df_rows_with_outliers) > 0:
                     offending_indexes = df_rows_with_outliers.index
-                    print("Rows with offending values occur at {}.".format(offending_indexes))
+                    if verbose:
+                        print("Rows with offending values occur at {}.".format(offending_indexes))
                     # now handle specific replacement rule - we only have three allowable: median, mean, or a constant value
                     # if the rule is a constant value, then we can replace in place
                     data_type = type(rule)
@@ -122,7 +130,8 @@ def clean_offending_values(
                     replace_with_callable = callable(rule)
                     if replace_with_numeric_literal:
                         df.loc[offending_indexes, col] = rule
-                        print("Replaced {} offending instances in column '{}' with literal value {}\n".format(len(offending_indexes), col, rule))
+                        if verbose:
+                            print("Replaced {} offending instances in column '{}' with literal value {}\n".format(len(offending_indexes), col, rule))
                     elif replace_with_median or replace_with_min or replace_with_max or replace_with_mean:
                         # first we need to get a subset of the rows WITHOUT any of the offending values
                         df_rows_without_outliers = df[df[col].isin(offending_vals)==False]
@@ -134,38 +143,49 @@ def clean_offending_values(
                             imputed = np.mean(df_rows_without_outliers[col])
                             s_imputed_from = "values from index domain:\n{}".format(df_rows_without_outliers.index) 
                         df.loc[offending_indexes, col] = imputed 
-                        s_desc = "the {} of column '{}'".format(rule, col)  
-                        print("{} is {} and was imputed from {}".format(s_desc.capitalize(), imputed, s_imputed_from))
-                        print("Replaced {} offending instances in column '{}' with {} ({})".format(len(offending_indexes), col, s_desc, imputed))
+                        s_desc = "the {} of column '{}'".format(rule, col)
+                        if verbose:
+                            print("{} is {} and was imputed from {}".format(s_desc.capitalize(), imputed, s_imputed_from))
+                            print("Replaced {} offending instances in column '{}' with {} ({})".format(len(offending_indexes), col, s_desc, imputed))
                     elif replace_with_callable:
                         df.loc[offending_indexes, col] = df.loc[offending_indexes, col].map(rule)
-                        print("Replaced {} offending instances in column '{}' with results from callable {}".format(len(offending_indexes), col, rule))
+                        if verbose:
+                            print("Replaced {} offending instances in column '{}' with results from callable {}".format(len(offending_indexes), col, rule))
                     else:
-                        print("Unsupported or unknown rule: {}".format(rule))                   
+                        if verbose:
+                            print("Unsupported or unknown rule: {}".format(rule))                   
                 else:
-                    print("There are no rows that contain values of '{}' in {}!".format(col, offending_vals))
+                    if verbose:
+                        print("There are no rows that contain values of '{}' in {}!".format(col, offending_vals))
 
         if has_string_rules:
             for col, rules in string_replacement_rules.items():
-                print("Rules for '{}' are: {}".format(col, rules))
+                if verbose:
+                    print("Rules for '{}' are: {}".format(col, rules))
                 # first determine if there are any offending values, which means we first need to collate said values
                 offending_vals = []
                 for val, rule in rules:
                     offending_vals.append(val)
-                print("Looking for rows with '{}' values in {} ...".format(col, offending_vals))
+                if verbose:
+                    print("Looking for rows with '{}' values in {} ...".format(col, offending_vals))
                 df_rows_with_outliers = df[df[col].isin(offending_vals)==True]
                 if len(df_rows_with_outliers) > 0:
                     offending_indexes = df_rows_with_outliers.index
-                    print("Rows with offending values occur at {}.".format(offending_indexes))
+                    if verbose:
+                        print("Rows with offending values occur at {}.".format(offending_indexes))
                     df.loc[offending_indexes, col] = rule
-                    print("Replaced {} offending instances in column '{}' with literal value '{}'".format(len(offending_indexes), col, rule))                 
+                    if verbose:
+                        print("Replaced {} offending instances in column '{}' with literal value '{}'".format(len(offending_indexes), col, rule))                 
                 else:
-                    print("There are no rows that contain values of '{}' in {}!".format(col, offending_vals))
+                    if verbose:
+                        print("There are no rows that contain values of '{}' in {}!".format(col, offending_vals))
 
     else:
-        print("Cannot clean outliers from {} since there were no replacement rules provided!".format(friendly_name))
+        if verbose:
+            print("Cannot clean outliers from {} since there were no replacement rules provided!".format(friendly_name))
     
-    print("*** CLEANING VALUES of {}: END ***".format(friendly_name))
+    if verbose:
+        print("*** CLEANING VALUES of {}: END ***".format(friendly_name))
 
 def log_transform(df, target_features, inplace=False):
     if not inplace:
