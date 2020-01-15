@@ -8,6 +8,7 @@
    1. kc_house_data.csv
    2. kc_house_cleaned_data.csv
    3. kc_house_candidate_cv_selection_data.csv
+   4. kc_cv_sel_optimized_features_scores_df.csv
 6. Custom Python API/library (source code) written for this project
 
 ## KingCountyHousingSales.ipynb
@@ -40,7 +41,12 @@ This is the output of the [notebook that carries out the steps to clean the data
 This data set is the basis upon which linear regression models are built.
 
 ### kc_house_candidate_cv_selection_data.csv
-This is the output of the [Cross Validation selection of optimal features, minimizing colinearity as well as RMSE](CrossValidationFeatureSelection.ipynb).
+This is the input to the [Cross Validation selection of optimal features notebook](CrossValidationFeatureSelection.ipynb).
+
+It is based on the kc_house_cleaned_data.csv but contains a restricted feature set that has been preprocessed for [Cross Validation Feature Selection](CrossValidationFeatureSelection.ipynb).
+
+### kc_cv_sel_optimized_features_scores_df.csv
+This is output of the [Cross Validation selection of optimal features notebook](CrossValidationFeatureSelection.ipynb).
 
 It houses a dataframe of "optimized" feature subsets used to build the final linear regression models, which are used to answer "real world questions", run experiments, and finally suggest a strategy to maximize market value when a hypothetical seller wants to put his home up for sale in King County.
 
