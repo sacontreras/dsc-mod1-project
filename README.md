@@ -12,7 +12,7 @@
 6. Custom Python API/library (source code) written for this project
 
 ## KingCountyHousingSales.ipynb
-This is the top level Jupyter notebook that constitues "the project".  
+This is the top level Jupyter notebook that constitutes "the project".  
 
 Start [here](KingCountyHousingSales.ipynb) by opening the [notebook](KingCountyHousingSales.ipynb).
 
