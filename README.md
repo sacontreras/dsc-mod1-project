@@ -56,3 +56,9 @@ This source is used throughout the project.  Rather than clutter the various not
 The files are located in:
 1. scjpnlib/utils/\_\_init\_\_.py
 2. scjpnlib/regression/api.py
+
+
+# Happy "Linear Regressioning"
+Yep.  I turned that into a verb.
+
+Enjoy.
