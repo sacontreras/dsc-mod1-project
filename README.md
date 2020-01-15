@@ -10,6 +10,7 @@
    3. kc_house_candidate_cv_selection_data.csv
    4. kc_cv_sel_optimized_features_scores_df.csv
 6. Custom Python API/library (source code) written for this project
+7. Presentation.pdf
 
 ## KingCountyHousingSales.ipynb
 This is the top level Jupyter notebook that constitutes "the project".  
@@ -56,6 +57,9 @@ This source is used throughout the project.  Rather than clutter the various not
 The files are located in:
 1. scjpnlib/utils/\_\_init\_\_.py
 2. scjpnlib/regression/api.py
+
+### Presentation.pdf
+This is a "high level" overview document of my project.
 
 
 # Happy "Linear Regressioning"!
