@@ -26,7 +26,7 @@ After the steps to clean the data set (in Step2.ipynb) are complete, this notebo
 
 *Cross-validation* over 5 *k-folds* is used with a scoring method to select the model (built on training data) that produces the least RMSE and the difference between that RMSE vs. the RMSE computed on the testing data, *with Condition Number <= 100 (in order <b>to minimize colinearity</b>)*.  This basis is taken *directly* from statsmodels Github [source code](https://www.statsmodels.org/dev/_modules/statsmodels/regression/linear_model.html#RegressionResults.summary) for the OLS fit results `summary` method but I restrict it even further (statsmodels defines non-colinearity by virtue of this value being less than 1000).
 
-See the Appendix or a more detailed explanation on how this works.
+See the Appendix for a more detailed explanation on how this works.
 
 ## Appendix.ipynb
 This notebook houses the technical and theoritical explanation of how Cross Validation selection of optimal features (minimizing colinearity as well as RMSE works.
