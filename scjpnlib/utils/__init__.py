@@ -29,6 +29,11 @@ def print_df_head(df, n=5):
 def print_df_tail(df, n=5):
     print_df(df, n, tail=True)
 
+def yes_no_prompt(prompt):
+    display(HTML("<h2>{}</h2>".format(prompt)))
+    response = input().strip().lower()
+    return response[0] == "y" if len(response) > 0 else False
+
 # note that we can qualitatively retrieve this information via df.info() but this function
 #   provides us with an object we can manipulate programatically, whereas df.info() just 
 #   prints the display of this information
@@ -194,7 +199,7 @@ def log_transform(df, target_features, inplace=False):
         df[feat] = df[feat].map(lambda v: np.log(v))
     return df
 
-# Min-max scaling: this will not be particularly useful to us in this case since this way of scaling brings values between 0 and 1
+# scaling brings values between 0 and 1
 def min_max_scaling(df, target_features, inplace=False):
     if not inplace:
         df = df.copy(deep=True)
@@ -204,7 +209,13 @@ def min_max_scaling(df, target_features, inplace=False):
         df[feat] = df[feat].map(lambda x: (x-min_feat)/(max_feat-min_feat))
     return df
 
-# standardization does not make data  moremore  normal, it will just change the mean and the standard error!
+def min_max_scale_value(x, df, feat):
+    min_feat = df[feat].min()
+    max_feat = df[feat].max()
+    x_scaled = (x-min_feat)/(max_feat-min_feat)
+    return x_scaled
+
+# standardization does not make data  more  normal, it will just change the mean and the standard error!
 def standardization(df, target_features, inplace=False):
     if not inplace:
         df = df.copy(deep=True)
@@ -298,88 +309,3 @@ def categorize(
 
 def encode_col_names(df):
     return df.rename(columns=lambda x: x.replace(" ", "").replace(",", "__").replace(".", "_").replace("(", "e").replace("]", "i"))
-
-def map_points(
-    df
-    , lat_col='lat'
-    , lon_col='long'
-    , zoom_start=11
-    , plot_points=False
-    , pt_radius=15
-    , draw_heatmap=False
-    , heat_map_weights_col=None
-    , heat_map_weights_normalize=True
-    , heat_map_radius=15):
-
-    """Creates a map given a dataframe of points. Can also produce a heatmap overlay
-
-    Arg:
-        df: dataframe containing points to maps
-        lat_col: Column containing latitude (string)
-        lon_col: Column containing longitude (string)
-        zoom_start: Integer representing the initial zoom of the map
-        plot_points: Add points to map (boolean)
-        pt_radius: Size of each point
-        draw_heatmap: Add heatmap to map (boolean)
-        heat_map_weights_col: Column containing heatmap weights
-        heat_map_weights_normalize: Normalize heatmap weights (boolean)
-        heat_map_radius: Size of heatmap point
-
-    Returns:
-        folium map object
-    """
-    
-    df_local = df.copy()
-
-    ## center map in the middle of points center in
-    middle_lat = df_local[lat_col].median()
-    middle_lon = df_local[lon_col].median()
-
-    curr_map = folium.Map(
-        location=[middle_lat, middle_lon]
-        , zoom_start=zoom_start
-        , control_scale=True
-    )
-    
-
-
-    # add points to map
-    if plot_points:
-        for _, row in df_local.iterrows():
-            folium.CircleMarker(
-                [row[lat_col], row[lon_col]]
-                , radius=pt_radius
-                , popup=row[heat_map_weights_col]
-                , fill_color="#3db7e4", # divvy color
-            ).add_to(curr_map)
-
-    # add heatmap
-    if draw_heatmap:
-        # convert to (n, 2) or (n, 3) matrix format
-        if heat_map_weights_col is None:
-            cols_to_pull = [lat_col, lon_col]
-        else:
-            # if we have to normalize
-            if heat_map_weights_normalize:
-                df_local[heat_map_weights_col] = df_local[heat_map_weights_col]/df_local[heat_map_weights_col].sum()
-            cols_to_pull = [lat_col, lon_col, heat_map_weights_col]
-        locations = df_local[cols_to_pull].values
-        curr_map.add_child(
-            plugins.HeatMap(
-                locations
-                , min_opacity=0.2
-                , max_val=df_local[heat_map_weights_col].max()
-                , radius=heat_map_radius
-                , max_zoom=1
-                , blur=15
-                , gradient={
-                    0: 'blue'
-                    , .25: 'lime'
-                    , .50: 'yellow'
-                    , .75: 'orange'
-                    , 1: 'red'
-                }
-            )
-        )
-
-    return curr_map

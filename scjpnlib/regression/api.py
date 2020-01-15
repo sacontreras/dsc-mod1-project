@@ -204,132 +204,7 @@ def feature_regression_summary(
     
     return v
 
-def skl_lin_reg_validation(X, y, tr, verbose=False):
-    linreg = LinearRegression()
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=tr, random_state=42)
-    linreg.fit(X_train, y_train)
-    y_hat_train = linreg.predict(X_train)
-    y_hat_test = linreg.predict(X_test)
-    train_residuals = y_hat_train - y_train
-    test_residuals = y_hat_test - y_test
-    train_mse = mean_squared_error(y_train, y_hat_train)
-    test_mse = mean_squared_error(y_test, y_hat_test)
-
-    if verbose:
-        s_html = "<table><table><thead><thead><tr><td><b>train/test-split ratio</b>: <b>{}/{}</b></td></tr></thead><tbody>".format(1-tr, tr)
-        s_html += "<tr><td><table><tbody><tr><td><table><tbody><tr><td>|X_train| = {}</td><td>|X_test| = {}</td><td>|y_train| = {}</td><td>|y_test| = {}</td></tr></tbody></table></td></tr>".format(len(X_train), len(X_test), len(y_train), len(y_test))
-        s_html += "<tr><td><table><tbody><tr><td>Train MSE:</td><td>{}</td></tr></tbody></table></td></tr>".format(train_mse)
-        s_html += "<tr><td><table><tbody><tr><td>Test MSE:</td><td>{}</td></tr></tbody></table></td></tr>".format(test_mse)
-        s_html += "<tr><td><table><tbody><tr><td><b>delta</b>:</td><td><b>{}</b></td></tr></tbody></table></td></tr>".format(abs(train_mse - test_mse))        
-        s_html += "</tbody></table></table>"
-        display(HTML(s_html))
-
-    return (X_train, X_test, y_train, y_test, train_mse, test_mse, linreg)
-
-def find_best_train_test_split(X, y, step_size = 5, verbose=False):
-    delta_min = -1
-    best_tr = 0
-    X_train_best = None
-    X_test_best = None
-    y_train__best = None
-    y_test_best = None
-    train_mse_best = None
-    test_mse_best = None
-    linreg_best = None
-
-    for test_ratio in range(step_size, 100, step_size):
-        tr = test_ratio/100
-        (X_train, X_test, y_train, y_test, train_mse, test_mse, linreg) = skl_lin_reg_validation(X, y, tr, verbose)
-        delta = abs(train_mse - test_mse)
-        if delta_min == -1 or delta < delta_min:
-            delta_min = delta
-            best_tr = tr
-            X_train_best = X_train
-            X_test_best = X_test
-            y_train_best = y_train
-            y_test_best = y_test
-            train_mse_best = train_mse
-            test_mse_best = test_mse
-            linreg_best = linreg
-
-    s_html = "<table><table><thead><thead><tr><td>best train/test-split ratio: {}/{}</td></tr></thead><tbody>".format(1-best_tr, best_tr)
-    s_html += "<tr><td><table><tbody><tr><td><table><tbody><tr><td>|X_train| = {}</td><td>|X_test| = {}</td><td>|y_train| = {}</td><td>|y_test| = {}</td></tr></tbody></table></td></tr>".format(len(X_train_best), len(X_test_best), len(y_train_best), len(y_test_best))
-    s_html += "<tr><td><table><tbody><tr><td>Train MSE:</td><td>{}</td></tr></tbody></table></td></tr>".format(train_mse_best)
-    s_html += "<tr><td><table><tbody><tr><td>Test MSE:</td><td>{}</td></tr></tbody></table></td></tr>".format(test_mse_best)
-    s_html += "<tr><td><table><tbody><tr><td>delta:</td><td>{}</td></tr></tbody></table></td></tr>".format(delta_min)        
-    s_html += "</tbody></table></table>"
-    display(HTML(s_html))
-
-    return (X_train_best, X_test_best, y_train_best, y_test_best, train_mse_best, test_mse_best, linreg_best)
-
-def stepwise_selection(
-    X
-    , y
-    , initial_list=[]
-    , threshold_in=0.01
-    , threshold_out = 0.05
-    , verbose=True):
-
-    """ Perform a forward-backward feature selection 
-    based on p-value from statsmodels.api.OLS
-    Arguments:
-        X - pandas.DataFrame with candidate features
-        y - list-like with the target
-        initial_list - list of features to start with (column names of X)
-        threshold_in - include a feature if its p-value < threshold_in
-        threshold_out - exclude a feature if its p-value > threshold_out
-        verbose - whether to print the sequence of inclusions and exclusions
-    Returns: list of selected features 
-    Always set threshold_in < threshold_out to avoid infinite looping.
-    See https://en.wikipedia.org/wiki/Stepwise_regression for the details
-    """
-
-    starting_features = list(X.columns)
-
-    included = list(initial_list)
-    included_pvals = []
-    while True:
-        changed=False
-        # forward step
-        excluded = list(set(X.columns)-set(included))
-        new_pval = pd.Series(index=excluded)
-        for new_column in excluded:
-            model = sm.OLS(y, sm.add_constant(pd.DataFrame(X[included+[new_column]]))).fit()
-            new_pval[new_column] = model.pvalues[new_column]
-        best_pval = new_pval.min()
-        if best_pval < threshold_in:
-            best_feature = new_pval.idxmin()
-            included.append(best_feature)
-            included_pvals.append(best_pval)
-            changed=True
-            if verbose:
-                print("stepwise_selection: Add  {:30} with p-value {:.6}".format(best_feature, best_pval))
-
-        # backward step
-        model = sm.OLS(y, sm.add_constant(pd.DataFrame(X[included]))).fit()
-        # use all coefs except intercept
-        pvalues = model.pvalues.iloc[1:]
-        worst_pval = pvalues.max() # null if pvalues is empty
-        if worst_pval > threshold_out:
-            changed=True
-            #worst_feature = pvalues.argmax()
-            worst_feature = pvalues.idxmax()
-            del included_pvals[included.index(worst_feature)]
-            included.remove(worst_feature)
-            if verbose:
-                print("stepwise_selection: Drop {:30} with p-value {:.6}".format(worst_feature, worst_pval))
-        if not changed:
-            break
-
-    dropped = list(set(starting_features) - set(included))
-            
-    print("\nstepwise_selection: starting features:\n{}".format(starting_features))
-    print("\nstepwise_selection: selected features:\n{}".format(included))
-    print("\nstepwise_selection: dropped statistically insignificant features:\n{}".format(dropped))
-
-    return (included, None, dropped)
-
+#this method simply houses the combinations (n-choose-k) used in cross-validation
 def cv_build_feature_combinations(X, reverse=False, upper_bound=2**18, boundary_test=False):
     feat_combos = dict()
     
@@ -367,6 +242,7 @@ def cv_build_feature_combinations(X, reverse=False, upper_bound=2**18, boundary_
     
     return (feat_combos, len_total_combos)
 
+#below are the list of constant string-literals used for cross-validation
 mse = 'mse'
 mse_train = mse + '_train'
 mse_test = mse + '_test'
@@ -404,6 +280,7 @@ cv_scoring_methods = [
     , condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse
 ]
 
+#this method does the scoring for cross-validation (using k-folds)
 def cv_score(
     X
     , y
@@ -604,7 +481,9 @@ def cv_score(
 
     return (X_train, X_test, y_train, y_test, mean_cv_score)
 
-def cv_selection(
+# this method is now deprecated and is here for reference only
+# use cv_selection_dp() instead
+def cv_selection_exhaustive(
     X
     , y
     , folds=5
@@ -617,7 +496,7 @@ def cv_selection(
     if smargs is not None:
         target_cond_no = smargs['cond_no']
     if target_cond_no is None:
-        target_cond_no = 1000
+        target_cond_no = 1000 #default definition of "non-colinearity" used by statsmodels - see https://www.statsmodels.org/dev/_modules/statsmodels/regression/linear_model.html#RegressionResults.summary
 
     cv_feat_combo_map, _ = cv_build_feature_combinations(X, reverse=reverse)
 
@@ -672,6 +551,143 @@ def cv_selection(
 
     display(HTML("<h4>cv_selected best {} = {}</h4>".format(condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse, best_score)))
     display(HTML("<h4>cv_selected best feature-set combo ({} of {} features):{}<h/4>".format(len(best_feat_combo), len(base_feature_set), best_feat_combo)))
+    display(HTML("<h4>starting feature-set:{}</h4>".format(base_feature_set)))
+    to_drop = list(set(base_feature_set).difference(set(best_feat_combo)))
+    display(HTML("<h4>cv_selection suggests dropping {}.</h4>".format(to_drop if len(to_drop)>0 else "<i>no features</i> from {}".format(base_feature_set))))
+
+    return (scores_df, best_feat_combo, best_score, to_drop)
+
+# please see Appendex.ipynb for reference, documentation, and explanation
+def cv_selection_dp(
+    X
+    , y
+    , folds=5
+    , reverse=False
+    , smargs=None):
+
+    cols = ['n_features', 'features', condition_no, rsquared, adjusted_rsquared, pvals, rmse, delta_rmse]
+    scores_df = pd.DataFrame(columns=cols)
+
+    target_cond_no = None
+    if smargs is not None:
+        target_cond_no = smargs['cond_no']
+    if target_cond_no is None:
+        target_cond_no = 1000 #default definition of "non-colinearity" used by statsmodels - see https://www.statsmodels.org/dev/_modules/statsmodels/regression/linear_model.html#RegressionResults.summary
+
+    cv_feat_combo_map, _ = cv_build_feature_combinations(X, reverse=reverse)
+
+    if cv_feat_combo_map is None:
+        return
+    
+    base_feature_set = list(X.columns)
+    n = len(base_feature_set)
+    
+    best_feat_combo = []
+    best_score = None
+
+    best_feat_combos = []
+    
+    for _, list_of_feat_combos in cv_feat_combo_map.items():
+        n_choose_k = len(list_of_feat_combos)
+        k = len(list_of_feat_combos[0])
+        depth = k-1
+        s_n_choose_k = "{} \\choose {}"
+        display(
+            HTML(
+                "<p><br><br>Cross-validating ${}={}$ combinations of {} features (out of {}) over {} folds using score <b>{}</b> and target cond. no = {}...".format(
+                    "{" + s_n_choose_k.format(n, k) + "}"
+                    , n_choose_k
+                    , k
+                    , n
+                    , folds
+                    , condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse
+                    , target_cond_no
+                )
+            )
+        )
+
+        n_discarded = 0
+        n_met_constraints = 0
+
+        for feat_combo in list_of_feat_combos:           
+            feat_combo = list(feat_combo)
+
+            closest_prior_depth = min(len(best_feat_combos)-1, depth-1)
+            if depth > 0 and closest_prior_depth >= 0:
+                last_best_feat_combo = best_feat_combos[closest_prior_depth]
+                last_best_feat_combo_in_current_feat_combo = set(last_best_feat_combo).issubset(set(feat_combo))
+                if last_best_feat_combo_in_current_feat_combo:
+                    #print("depth is {}, best_feat_combos[last_saved_depth]: {}".format(depth, best_feat_combos[last_saved_depth]))
+                    #print("feat_combo: {}".format(feat_combo))
+                    #print("best_feat_combos[last_saved_depth] in feat_combo: {}".format(last_best_feat_combo_in_current_feat_combo))
+                    pass
+                else:
+                    n_discarded += 1
+                    #display(HTML("DISCARDED feature-combo {} since it is not based on last best feature-combo {}; discarded so far: {}".format(feat_combo, last_best_feat_combo, n_discarded)))
+                    continue
+
+            _, _, _, _, score = cv_score(
+                X
+                , y
+                , feat_combo
+                , folds
+                , condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse
+            )
+
+            # now determine if this score is best
+            is_in_conf_interval = False not in [True if pval >= 0.0 and pval <= 0.05 else False for pval in score[3]]
+            is_non_colinear = score[0] <= target_cond_no
+            if is_non_colinear and is_in_conf_interval and (best_score is None or (score[1] > best_score[1] and score[2] > best_score[2])):
+                n_met_constraints += 1
+                best_score = score
+                best_feat_combo = feat_combo
+                if len(best_feat_combos) < k:
+                    best_feat_combos.append(feat_combo)
+                else:
+                    best_feat_combos[depth] = feat_combo
+                print("new best {} score: {}, from feature-set combo: {}".format(condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse, best_score, best_feat_combo))
+                data = [
+                    {
+                        'n_features': len(feat_combo)
+                        , 'features': feat_combo
+                        , condition_no: score[0]
+                        , rsquared: score[1]
+                        , adjusted_rsquared: score[2]
+                        , pvals: score[3]
+                        , rmse: score[4]
+                        , delta_rmse: score[5]
+                    }
+                ]
+                mask = scores_df['n_features']==k
+                if len(scores_df.loc[mask]) == 0:
+                    scores_df = scores_df.append(data, ignore_index=True, sort=False)
+                else:
+                    keys = list(data[0].keys())
+                    replacement_vals = list(data[0].values())
+                    scores_df.loc[mask, keys] = [replacement_vals]
+        
+        if n_discarded > 0:
+            display(HTML("<p>DISCARDED {} {}-feature combinations that were not based on prior optimal feature-combo {}".format(n_discarded, k, last_best_feat_combo)))
+        if n_met_constraints > 0:
+            display(HTML("<p>cv_selection chose the best of {} {}-feature combinations that met the constraints (out of {} considered)".format(n_met_constraints, k, n_choose_k - n_discarded)))
+        if n_choose_k - n_discarded - n_met_constraints > 0:
+            display(HTML("<p>{} {}-feature combinations (out of {} considered) failed to meet the constraints<p><br><br>".format(n_choose_k - n_discarded - n_met_constraints, k, n_choose_k - n_discarded)))
+    
+    display(HTML("<h2>Table of cv_selected Optimized Feature Combinations</h2>"))
+    print_df(scores_df)
+
+    display(HTML("<h4>cv_selected best {} = {}</h4>".format(condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse, best_score)))
+    display(
+        HTML(
+            "<h4>cv_selected best feature-set combo ({} of {} features) {} based on {} scoring method with target cond. no. {}<h/4>".format(
+                len(best_feat_combo)
+                , len(base_feature_set)
+                , best_feat_combo
+                , condition_no_and_pvals_and_rsq_and_adjrsq_and_rmse_and_delta_rmse
+                , target_cond_no
+            )
+        )
+    )
     display(HTML("<h4>starting feature-set:{}</h4>".format(base_feature_set)))
     to_drop = list(set(base_feature_set).difference(set(best_feat_combo)))
     display(HTML("<h4>cv_selection suggests dropping {}.</h4>".format(to_drop if len(to_drop)>0 else "<i>no features</i> from {}".format(base_feature_set))))
@@ -944,81 +960,12 @@ def scatterplot_comparison(X1, X2, y1, y2, title1, title2):
     fig.tight_layout()
     plt.show();
 
-def split_categorical(df, p_cat, target=None):
-    df_minus_target = df.drop(target, axis=1) if target is not None else df
-    
-    s_html = "<h2>Split Categorical:</h2><ul>"
-    s_html += "<li><b>p-cat threshold</b>: {}</li>".format(p_cat)
-    s_html += "<li><b>feature set</b>: {}</li>".format(df_minus_target.columns)
-    s_html += "</ul>"
-    display(HTML(s_html))
-    
-    if target is not None:
-        scatter_plots(df, target)
-    
-    cat_classification_df = classify_as_categorical(df_minus_target, p_cat, False)
-    display(HTML("<b>Categorical Features ($p\\_cat \\ge {}$):</b><br><br>".format(p_cat)))
-    print_df(cat_classification_df)
-    
-    categorical_features = list(cat_classification_df['name'])
-    continuous_features = list(df_minus_target.columns)
-
-    s_html = "The following features are <i>apparently</i> <b>categorical</b> (based on $p\\_cat \\ge {}$):<br><ul>".format(p_cat)
-    for cat_feat in categorical_features:
-        continuous_features.remove(cat_feat)
-        s_html += "<li><b>{}</b></li>".format(cat_feat)
-    s_html += "</ul>"
-    display(HTML(s_html))
-    
-    s_html = "<br>Based on the above, the following features are <i>apparently</i> <b>continuous</b>:<br><ul>"
-    for cont_feat in continuous_features:
-        s_html += "<li><b>{}</b></li>".format(cont_feat)
-    s_html += "</ul>"
-    display(HTML(s_html))
-        
-    return (cat_classification_df, categorical_features, continuous_features)
-
-def summarize_multicolinearity(df, target, corr_filter_threshold = 0.75):
-    #features_only_df = df.drop([target], axis=1)
-    features_only_df = df
-    features_only_corr = features_only_df.corr()
-    features_only_corr_bool_df = abs(features_only_corr) > corr_filter_threshold
-    
-    display(HTML("<b>Independent features that are greater than {}% correlated</b>:".format(round(corr_filter_threshold*100, 2))))
-    print_df(features_only_corr_bool_df)
-
-    plt.figure(figsize=(15,12)) # custom dims (not based on plot_edge)
-    sns.heatmap(features_only_corr, center=0)
+def plot_feature_importance(mfr, title):
+    feature_coeffs = np.absolute(mfr.params[1:]).sort_values(ascending=False)
+    feat_names = list(feature_coeffs.index)
+    feat_vals = list(feature_coeffs.values)
+    fig = plt.figure(figsize=(12, 8))
+    plt.title("Relative Importance of Features: {}".format(title))
+    sns.barplot(x=feat_names, y=feat_vals, color='red')
+    fig.tight_layout()
     plt.show();
-    
-    correlations = dict()
-    max_corr = None
-    correlated = []
-        
-    for index, col in enumerate(features_only_corr_bool_df.columns):
-        corr_bool_counts = features_only_corr_bool_df[col].value_counts()
-        if corr_bool_counts[1] > 1:  # then we have a pair-wise correlation > corr_filter_threshold
-            # print("\n{} has {} correlations in corr_bool_counts:\n{}".format(col, corr_bool_counts[1], kchd_features_only_corr_bool_df[kchd_features_only_corr_bool_df[col]==True]))
-            corrs = []
-            for c in list(features_only_corr_bool_df[features_only_corr_bool_df[col]==True].index):
-                if c != col:
-                    corr = round(features_only_corr[col][c], 2)                    
-                    print("{} {}% correlated to {}".format(col, round(corr*100, 2), c))                    
-                    if col in correlations:
-                        correlations[col].append((c, corr))
-                    else:
-                        correlations[col] = [(c, corr)]
-                    if max_corr is None:
-                        max_corr = (col, correlations[col])
-                    elif len(correlations[col]) > len(max_corr[1]):
-                        max_corr = (col, correlations[col])
-                    corrs.append(c)
-            correlated.append(corrs)
-    if len(correlations) == 0:
-        print("Congratulations! The {} feature-set does not manifest multicolinearity for threshold {}!".format(features_only_df.columns, corr_filter_threshold))       
-    
-    print("\nmost severe correlation: {}".format(max_corr))
-    
-    #largest_intersection(correlated)
-    
-    return (correlations, max_corr) 
