@@ -58,7 +58,7 @@ The files are located in:
 2. scjpnlib/regression/api.py
 
 
-# Happy "Linear Regressioning"
+# Happy "Linear Regressioning"!
 Yep.  I turned that into a verb.
 
 Enjoy.
