@@ -245,6 +245,7 @@ def unit_vector_normalization(df, target_features, inplace=False):
         df[feat] = df[feat].map(lambda x: x/norm_feat)
     return df
 
+# credit to Bunny Rabbit for code: Rabbit, B. (2018). Revisions to Is there a math nCr function in python? [duplicate]. Retrieved rom https://stackoverflow.com/posts/4941932/revisions
 def nCr(n, r):
     r = min(r, n-r)
     numer = reduce(op.mul, range(n, n-r, -1), 1)
